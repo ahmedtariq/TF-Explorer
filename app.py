@@ -20,21 +20,19 @@ data = pd.read_csv(args.file_path)
 # Generate a large color palette for TF_motif
 tf_motifs = data['TF_motif'].unique()
 num_tf_motifs = len(tf_motifs)
-tf_motif_cmap =  sns.color_palette(cc.glasbey, n_colors=num_tf_motifs)
-tf_motif_colors = {tf_motifs[i]: tuple(tf_motif_cmap[i])+ (0.8,) for i in range(num_tf_motifs)}
-
-
+tf_motif_cmap = sns.color_palette(cc.glasbey, n_colors=num_tf_motifs)
+tf_motif_colors = {tf_motifs[i]: tuple(tf_motif_cmap[i]) + (0.8,) for i in range(num_tf_motifs)}
 
 # Generate a gradient color palette for time values from 1 to 10
 time_values = data["time"].unique()
 num_time_values = len(time_values)
-time_cmap = sns.color_palette(n_colors=num_time_values)
-time_colors = {str(time_values[i]): tuple(time_cmap[i])+ (0.8,) for i in range(num_time_values)}
+time_cmap = sns.color_palette("coolwarm", n_colors=num_time_values)
+time_colors = {str(time_values[i]): tuple(time_cmap[i]) + (0.8,) for i in range(num_time_values)}
 
 # Fixed colors for direction
 direction_colors = {
     'pos': (44, 160, 44, 0.8),  # Green
-    'neg': (214, 39, 40,0.8)  # Red
+    'neg': (214, 39, 40, 0.8)  # Red
 }
 
 # Combine all color palettes
@@ -47,9 +45,17 @@ app = dash.Dash(__name__)
 app.layout = html.Div([
     html.H1("Interactive Sankey Diagram"),
     html.Div([
-        html.Label("Select TF_motif:"),
+        html.Label("Select left TF_motif:"),
         dcc.Dropdown(
-            id='tf_motif_filter',
+            id='left_tf_motif_filter',
+            options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
+            multi=True
+        ),
+    ]),
+    html.Div([
+        html.Label("Select right TF_motif:"),
+        dcc.Dropdown(
+            id='right_tf_motif_filter',
             options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
             multi=True
         ),
@@ -77,7 +83,7 @@ app.layout = html.Div([
         dcc.Slider(
             id='score_threshold',
             min=0,
-            max=round(data['score'].abs().max(),1),
+            max=round(data['score'].abs().max(), 1),
             step=0.1,
             value=0
         ),
@@ -91,24 +97,25 @@ def blend_colors(tf_color, time_color, alpha=0.7):
     tf_rgb = np.array(tf_color[:3] + (0.4,))
     time_rgb = np.array(time_color[:3] + (0.4,))
     blended_rgb = (1 - alpha) * tf_rgb + alpha * time_rgb
-    return "rgba"+ str(tuple(blended_rgb))
+    return "rgba" + str(tuple(blended_rgb))
 
 
 # Callback to update the Sankey diagram based on filters
 @app.callback(
     Output('sankey_diagram', 'figure'),
-    [Input('tf_motif_filter', 'value'),
+    [Input('left_tf_motif_filter', 'value'),
+     Input('right_tf_motif_filter', 'value'),
      Input('score_threshold', 'value')]
 )
-def update_sankey(tf_motif_filter, score_threshold):
-    if not tf_motif_filter:
-        return go.Figure()  # Return an empty figure if no TF_motif is selected
+def update_sankey(left_tf_motif_filter, right_tf_motif_filter, score_threshold):
+    if not left_tf_motif_filter:
+        return go.Figure()  # Return an empty figure if no left TF_motif is selected
 
-    filtered_data = data[data['TF_motif'].isin(tf_motif_filter) & (data['score'].abs() >= score_threshold)]
+    filtered_data = data[data['TF_motif'].isin(left_tf_motif_filter) & (data['score'].abs() >= score_threshold)]
 
     df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'gene']).agg({'score': 'sum'}).reset_index()
     df_summary['score'] = df_summary['score'].abs()
-    
+
     nodes = list(pd.concat([
         df_summary['TF_motif'],
         df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1),
@@ -116,7 +123,18 @@ def update_sankey(tf_motif_filter, score_threshold):
         df_summary['gene']
     ]).unique())
 
+    if right_tf_motif_filter:
+        right_filtered_data = data[data['TF_motif'].isin(right_tf_motif_filter) & (data['score'].abs() >= score_threshold)]
+        right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'gene']).agg({'score': 'sum'}).reset_index()
+        right_df_summary['score'] = right_df_summary['score'].abs()
 
+        nodes += list(pd.concat([
+            right_df_summary['TF_motif'],
+            right_df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1),
+            right_df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}_{x['time']}", axis=1)
+        ]).unique())
+
+    nodes = list(pd.Series(nodes).unique())
     node_indices = {node: i for i, node in enumerate(nodes)}
 
     links = {
@@ -129,11 +147,11 @@ def update_sankey(tf_motif_filter, score_threshold):
     node_colors = []
     for node in nodes:
         if (node.split("_")[-1] in direction_colors.keys()) | (node.split("_")[-1] in time_colors.keys()):
-            node_colors.append("rgba"+str(color_palette[node.split("_")[-1]]))
+            node_colors.append("rgba" + str(color_palette[node.split("_")[-1]]))
         elif node in color_palette.keys():
-            node_colors.append("rgba"+str(color_palette[node]))
+            node_colors.append("rgba" + str(color_palette[node]))
         else:
-            node_colors.append('rgba(0, 0, 0, 0.8)' )  # Default color for genes
+            node_colors.append('rgba(0, 0, 0, 0.8)')  # Default color for genes
 
     for _, row in df_summary.iterrows():
         tf_motif = row['TF_motif']
@@ -141,22 +159,47 @@ def update_sankey(tf_motif_filter, score_threshold):
         time = f"{direction}_{row['time']}"
         gene = row['gene']
         score = row['score']
-        
+
         links['source'].append(node_indices[tf_motif])
         links['target'].append(node_indices[direction])
         links['value'].append(score)
-        links['color'].append("rgba"+str(color_palette.get(tf_motif, (0, 0, 0,0.4) )))
-        
+        links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+
         links['source'].append(node_indices[direction])
         links['target'].append(node_indices[time])
         links['value'].append(score)
-        links['color'].append("rgba"+str(color_palette.get(tf_motif, (0, 0, 0,0.4) )))
-        
+        links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+
         links['source'].append(node_indices[time])
         links['target'].append(node_indices[gene])
         links['value'].append(score)
         blended_color = blend_colors(tf_motif_colors[tf_motif], time_colors[str(row['time'])])
         links['color'].append(blended_color)
+
+    if right_tf_motif_filter:
+        for _, row in right_df_summary.iterrows():
+            tf_motif = row['TF_motif']
+            direction = f"{tf_motif}_{row['direction']}"
+            time = f"{direction}_{row['time']}"
+            gene = row['gene']
+            score = row['score']
+
+            if gene in node_indices:
+                links['source'].append(node_indices[gene])
+                links['target'].append(node_indices[time])
+                links['value'].append(score)
+                links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+
+                links['source'].append(node_indices[time])
+                links['target'].append(node_indices[direction])
+                links['value'].append(score)
+                links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+
+                links['source'].append(node_indices[direction])
+                links['target'].append(node_indices[tf_motif])
+                links['value'].append(score)
+                blended_color = blend_colors(tf_motif_colors[tf_motif], time_colors[str(row['time'])])
+                links['color'].append(blended_color)
 
     fig = go.Figure(data=[go.Sankey(
         node=dict(
@@ -164,7 +207,8 @@ def update_sankey(tf_motif_filter, score_threshold):
             thickness=20,
             line=dict(color="black", width=0.5),
             label=nodes,
-            color=node_colors
+            color=node_colors,
+            align='center'
         ),
         link=dict(
             source=links['source'],
