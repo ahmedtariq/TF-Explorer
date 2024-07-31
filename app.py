@@ -38,6 +38,9 @@ direction_colors = {
 # Combine all color palettes
 color_palette = {**tf_motif_colors, **time_colors, **direction_colors}
 
+# Background color (same as the dummy nodes and links)
+background_color = 'rgba(255, 255, 255, 0.0)'
+
 # Create the Dash app
 app = dash.Dash(__name__)
 
@@ -177,6 +180,42 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, score_threshold):
         links['color'].append(blended_color)
 
     if right_tf_motif_filter:
+        right_gene_set = set(right_df_summary['gene'])
+        left_gene_set = set(df_summary['gene'])
+        unconnected_genes = left_gene_set - right_gene_set
+
+        # Add dummy nodes and links for unconnected genes
+        for gene in unconnected_genes:
+            dummy_tf = ""
+            dummy_direction = ""
+            dummy_time = ""
+
+            if dummy_tf not in nodes:
+                nodes.append(dummy_tf)
+                nodes.append(dummy_direction)
+                nodes.append(dummy_time)
+                node_indices[dummy_tf] = len(node_indices)
+                node_indices[dummy_direction] = len(node_indices)
+                node_indices[dummy_time] = len(node_indices)
+                node_colors.append(background_color)
+                node_colors.append(background_color)
+                node_colors.append(background_color)
+
+            links['source'].append(node_indices[gene])
+            links['target'].append(node_indices[dummy_time])
+            links['value'].append(1)  # Arbitrary value for dummy links
+            links['color'].append(background_color)
+
+            links['source'].append(node_indices[dummy_time])
+            links['target'].append(node_indices[dummy_direction])
+            links['value'].append(1)
+            links['color'].append(background_color)
+
+            links['source'].append(node_indices[dummy_direction])
+            links['target'].append(node_indices[dummy_tf])
+            links['value'].append(1)
+            links['color'].append(background_color)
+
         for _, row in right_df_summary.iterrows():
             tf_motif = row['TF_motif']
             direction = f"{tf_motif}_{row['direction']}"
@@ -207,8 +246,7 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, score_threshold):
             thickness=20,
             line=dict(color="black", width=0.5),
             label=nodes,
-            color=node_colors,
-            align='center'
+            color=node_colors
         ),
         link=dict(
             source=links['source'],
