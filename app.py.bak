@@ -1,0 +1,175 @@
+import dash
+from dash import dcc, html, Input, Output
+import plotly.graph_objects as go
+import pandas as pd
+import argparse
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import numpy as np
+
+# Command-line argument parsing
+parser = argparse.ArgumentParser(description='Run Dash app with a specified CSV file.')
+parser.add_argument('file_path', type=str, help='Path to the CSV file')
+args = parser.parse_args()
+
+# Load the dataset
+data = pd.read_csv(args.file_path)
+
+# Generate a large color palette for TF_motif
+tf_motifs = data['TF_motif'].unique()
+num_tf_motifs = len(tf_motifs)
+tf_colors = plt.cm.get_cmap('tab20', num_tf_motifs)
+tf_motif_colors = {tf_motifs[i]: mcolors.rgb2hex(tf_colors(i)[:3]) for i in range(num_tf_motifs)}
+
+# Generate a gradient color palette for time values from 1 to 10
+time_values = df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}_{x['time']}", axis=1).unique()
+time_colors = [mcolors.rgb2hex(plt.cm.viridis(i/10)[:3]) for i in time_values]
+time_palette = {str(time_values[i]): time_colors[i] for i in range(len(time_values))}
+
+# Fixed colors for direction
+direction_colors = {
+    'pos': 'rgba(44, 160, 44, 0.8)',  # Green
+    'neg': 'rgba(214, 39, 40, 0.8)',  # Red
+}
+
+# Combine all color palettes
+color_palette = {**tf_motif_colors, **time_palette, **direction_colors}
+
+# Create the Dash app
+app = dash.Dash(__name__)
+
+# Layout of the app
+app.layout = html.Div([
+    html.H1("Interactive Sankey Diagram"),
+    html.Div([
+        html.Label("Select TF_motif:"),
+        dcc.Dropdown(
+            id='tf_motif_filter',
+            options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
+            multi=True
+        ),
+    ]),
+    html.Div([
+        html.Label("Select Direction:"),
+        dcc.Dropdown(
+            id='direction_filter',
+            options=[{'label': dir, 'value': dir} for dir in data['direction'].unique()],
+            multi=True,
+            disabled=True
+        ),
+    ]),
+    html.Div([
+        html.Label("Select Time:"),
+        dcc.Dropdown(
+            id='time_filter',
+            options=[{'label': time, 'value': time} for time in data['time'].unique()],
+            multi=True,
+            disabled=True
+        ),
+    ]),
+    html.Div([
+        html.Label("Minimum Score Threshold:"),
+        dcc.Slider(
+            id='score_threshold',
+            min=0,
+            max=data['score'].abs().max(),
+            step=0.1,
+            value=0
+        ),
+    ]),
+    dcc.Graph(id='sankey_diagram')
+])
+
+# Callback to update the Sankey diagram based on filters
+@app.callback(
+    Output('sankey_diagram', 'figure'),
+    [Input('tf_motif_filter', 'value'),
+     Input('score_threshold', 'value')]
+)
+def update_sankey(tf_motif_filter, score_threshold):
+    if not tf_motif_filter:
+        return go.Figure()  # Return an empty figure if no TF_motif is selected
+
+    filtered_data = data[data['TF_motif'].isin(tf_motif_filter) & (data['score'].abs() >= score_threshold)]
+
+    df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'gene']).agg({'score': 'sum'}).reset_index()
+    df_summary['score'] = df_summary['score'].abs()
+    
+    nodes = list(pd.concat([
+        df_summary['TF_motif'],
+        df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1),
+        df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}_{x['time']}", axis=1),
+        df_summary['gene']
+    ]).unique())
+    node_indices = {node: i for i, node in enumerate(nodes)}
+
+    links = {
+        'source': [],
+        'target': [],
+        'value': [],
+        'color': []
+    }
+
+    # Generate distinct colors for each node level
+    tf_motif_colors = {tf: mcolors.rgb2hex(tf_colors(i)[:3]) for i, tf in enumerate(df_summary['TF_motif'].unique())}
+    direction_nodes = df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1).unique()
+    direction_colors = {dir: mcolors.rgb2hex(tf_colors(i + len(tf_motif_colors))[:3]) for i, dir in enumerate(direction_nodes)}
+    time_nodes = df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}_{x['time']}", axis=1).unique()
+    time_colors = {time: mcolors.rgb2hex(plt.cm.viridis(i/len(time_nodes))[:3]) for i, time in enumerate(time_nodes)}
+
+    node_colors = []
+    for node in nodes:
+        if node in tf_motif_colors:
+            node_colors.append(color_palette[node])
+        elif node in direction_colors:
+            node_colors.append(color_palette[node.split("_")[0]])
+        elif node in time_colors:
+            node_colors.append(color_palette[node])
+        else:
+            node_colors.append('rgba(0, 0, 0, 0.8)')  # Default color for genes
+
+    for _, row in df_summary.iterrows():
+        tf_motif = row['TF_motif']
+        direction = f"{tf_motif}_{row['direction']}"
+        time = f"{direction}_{row['time']}"
+        gene = row['gene']
+        score = row['score']
+        
+        links['source'].append(node_indices[tf_motif])
+        links['target'].append(node_indices[direction])
+        links['value'].append(score)
+        links['color'].append(color_palette.get(tf_motif, 'rgba(0, 0, 0, 0.8)'))
+        
+        links['source'].append(node_indices[direction])
+        links['target'].append(node_indices[time])
+        links['value'].append(score)
+        links['color'].append(color_palette.get(direction.split("_")[0], 'rgba(0, 0, 0, 0.8)'))
+        
+        links['source'].append(node_indices[time])
+        links['target'].append(node_indices[gene])
+        links['value'].append(score)
+        links['color'].append(color_palette.get(time, 'rgba(0, 0, 0, 0.8)'))
+
+    fig = go.Figure(data=[go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color="black", width=0.5),
+            label=nodes,
+            color=node_colors
+        ),
+        link=dict(
+            source=links['source'],
+            target=links['target'],
+            value=links['value'],
+            color=links['color']
+        )
+    )])
+
+    fig.update_layout(title_text="Interactive Sankey Diagram", font_size=10, height=800)
+
+    return fig
+
+# Run the app
+if __name__ == '__main__':
+    app.run_server(debug=True, port=8050)
