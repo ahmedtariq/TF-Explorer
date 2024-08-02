@@ -3,11 +3,11 @@ from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 import pandas as pd
 import argparse
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import seaborn as sns
 import numpy as np
 import colorcet as cc
+import gseapy as gp
+
 
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description='Run Dash app with a specified CSV file.')
@@ -64,6 +64,14 @@ app.layout = html.Div([
         ),
     ]),
     html.Div([
+        html.Label("Select right and left join mode:"),
+        dcc.RadioItems(
+            id = "join_type",
+            options = ['inner', 'outer'], 
+            value = 'outer', 
+            inline=True),
+    ], style={'margin': '10px auto'}),    
+    html.Div([
         html.Label("Select Direction:"),
         dcc.Dropdown(
             id='direction_filter',
@@ -86,11 +94,19 @@ app.layout = html.Div([
             min=0,
             max=round(data['score'].abs().max(), 1),
             step=0.1,
-            value=0
+            value=0,
+            tooltip={"placement": "bottom", "always_visible": True}
         ),
-    ]),
-    dcc.Graph(id='sankey_diagram')
-])
+    ], style={'width': '50%', 'margin': '10px auto'}),
+    dcc.Graph(
+        id='sankey_diagram',
+        style={'height': '80vh', 'width': '100vw'}  # Adjust these values as needed
+    ),
+    dcc.Graph(
+        id='go_enrichment_plot',
+        style={'height': '60vh', 'width': '90vw'}  # Adjust these values as needed
+    )
+], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'})
 
 
 # Helper function to blend TF_motif color with time greyscale
@@ -103,20 +119,34 @@ def blend_colors(tf_color, time_color, alpha=0.7):
 
 # Callback to update the Sankey diagram based on filters
 @app.callback(
-    Output('sankey_diagram', 'figure'),
+    [Output('sankey_diagram', 'figure'),
+     Output('go_enrichment_plot', 'figure')],
     [Input('left_tf_motif_filter', 'value'),
      Input('right_tf_motif_filter', 'value'),
+     Input('join_type', 'value'),
      Input('direction_filter', 'value'),
      Input('time_filter', 'value'),
      Input('score_threshold', 'value')]
 )
-def update_sankey(left_tf_motif_filter, right_tf_motif_filter, direction_filter, time_filter, score_threshold):
+def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direction_filter, time_filter, score_threshold):
     if not left_tf_motif_filter:
-        return go.Figure()  # Return an empty figure if no left TF_motif is selected
+        return go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
     direction_filter = direction_filter if direction_filter else ["pos", "neg"]
     time_filter = time_filter if time_filter else [0,1,2,3,4,5,6,7,8,9]
-    filtered_data = data[data['TF_motif'].isin(left_tf_motif_filter) & (data['score'].abs() >= score_threshold) & data['direction'].isin(direction_filter) & data['time'].isin(time_filter)]
+
+    left_genes = set(data.loc[data['TF_motif'].isin(left_tf_motif_filter)& (data['score'].abs() >= score_threshold) & (data['direction'].isin(direction_filter)) & (data['time'].isin(time_filter)), "gene"].unique().tolist())
+    if right_tf_motif_filter:
+        right_genes = set(data.loc[data['TF_motif'].isin(right_tf_motif_filter) & (data['score'].abs() >= score_threshold) & (data['direction'].isin(direction_filter)) & (data['time'].isin(time_filter)), "gene"].unique().tolist())
+        gene_join_filter = left_genes.union(right_genes) if join_type == "outer" else left_genes.intersection(right_genes)
+    else:
+        gene_join_filter = left_genes
+
+    filtered_data = data[data['TF_motif'].isin(left_tf_motif_filter) &
+                         data['gene'].isin(gene_join_filter) &
+                          (data['score'].abs() >= score_threshold) &
+                          (data['direction'].isin(direction_filter)) &
+                          (data['time'].isin(time_filter))]
 
     df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'gene']).agg({'score': 'sum'}).reset_index()
     df_summary['score'] = df_summary['score'].abs()
@@ -129,7 +159,11 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, direction_filter,
     ]).unique())
 
     if right_tf_motif_filter:
-        right_filtered_data = data[data['TF_motif'].isin(right_tf_motif_filter) & (data['score'].abs() >= score_threshold) & data['direction'].isin(direction_filter) & data['time'].isin(time_filter)]
+        right_filtered_data = data[data['TF_motif'].isin(right_tf_motif_filter) &
+                                   data['gene'].isin(gene_join_filter) &
+                                    (data['score'].abs() >= score_threshold) &
+                                      data['direction'].isin(direction_filter) &
+                                        data['time'].isin(time_filter)]
         right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'gene']).agg({'score': 'sum'}).reset_index()
         right_df_summary['score'] = right_df_summary['score'].abs()
 
@@ -293,9 +327,39 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, direction_filter,
         )
     )])
 
-    fig.update_layout(title_text="Interactive Sankey Diagram", font_size=10, height=1200)
+    # Perform GO enrichment analysis using gseapy
+    go_results = gp.enrichr(gene_list=list(gene_join_filter),
+                            gene_sets='GO_Molecular_Function_2015',
+                            background=list(data['gene'].unique()),
+                            outdir=None)
+    
+    go_results_df = go_results.res2d
+    go_results_df['log10_adjusted_pvalue'] = -np.log10(go_results_df['Adjusted P-value'])
 
-    return fig
+    top_terms = go_results_df.sort_values(by='Adjusted P-value').head(20)
+
+    go_fig = go.Figure()
+
+    go_fig.add_trace(go.Bar(
+        x=top_terms['Odds Ratio'],
+        y=top_terms['Term'],
+        orientation='h',
+        marker=dict(
+            color=top_terms['log10_adjusted_pvalue'],
+            colorscale='Viridis',
+            colorbar=dict(title='-log10(p-value)')
+        )
+    ))
+
+    go_fig.update_layout(
+        title='Top 20 GO Terms',
+        xaxis_title='Odds Ratio',
+        yaxis_title='GO Term',
+        yaxis=dict(autorange="reversed"),
+        template='plotly_white'
+    )
+
+    return fig, go_fig
 
 # Run the app
 if __name__ == '__main__':
