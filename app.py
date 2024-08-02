@@ -8,7 +8,6 @@ import numpy as np
 import colorcet as cc
 import gseapy as gp
 
-
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description='Run Dash app with a specified CSV file.')
 parser.add_argument('file_path', type=str, help='Path to the CSV file')
@@ -66,11 +65,11 @@ app.layout = html.Div([
     html.Div([
         html.Label("Select right and left join mode:"),
         dcc.RadioItems(
-            id = "join_type",
-            options = ['inner', 'outer'], 
-            value = 'outer', 
+            id='join_type',
+            options=['inner', 'outer'],
+            value='outer',
             inline=True),
-    ], style={'margin': '10px auto'}),    
+    ], style={'margin': '10px auto'}),
     html.Div([
         html.Label("Select Direction:"),
         dcc.Dropdown(
@@ -102,9 +101,21 @@ app.layout = html.Div([
         id='sankey_diagram',
         style={'height': '80vh', 'width': '100vw'}  # Adjust these values as needed
     ),
+        html.Div([
+        html.Label("Select Gene Set:"),
+        dcc.Dropdown(
+            id='gene_set_filter',
+            options=[
+                {'label': 'GO Molecular Function 2015', 'value': 'GO_Molecular_Function_2015'},
+                {'label': 'GO Cellular Component 2015', 'value': 'GO_Cellular_Component_2015'},
+                {'label': 'GO Biological Process 2015', 'value': 'GO_Biological_Process_2015'}
+            ],
+            multi=False
+        ),
+    ], style={'width': '50%', 'margin': '10px auto'}),
     dcc.Graph(
         id='go_enrichment_plot',
-        style={'height': '60vh', 'width': '90vw'}  # Adjust these values as needed
+        style={'height': '80vh', 'width': '90vw'}  # Adjust these values as needed
     )
 ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'})
 
@@ -126,9 +137,10 @@ def blend_colors(tf_color, time_color, alpha=0.7):
      Input('join_type', 'value'),
      Input('direction_filter', 'value'),
      Input('time_filter', 'value'),
-     Input('score_threshold', 'value')]
+     Input('score_threshold', 'value'),
+     Input('gene_set_filter', 'value')]
 )
-def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direction_filter, time_filter, score_threshold):
+def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direction_filter, time_filter, score_threshold, gene_set_filter):
     if not left_tf_motif_filter:
         return go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
@@ -317,7 +329,7 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direct
             line=dict(color="black", width=0.5),
             label=nodes,
             color=node_colors,
-            align = "center"
+            align="center"
         ),
         link=dict(
             source=links['source'],
@@ -328,38 +340,53 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direct
     )])
 
     # Perform GO enrichment analysis using gseapy
-    go_results = gp.enrichr(gene_list=list(gene_join_filter),
-                            gene_sets='GO_Molecular_Function_2015',
-                            background=list(data['gene'].unique()),
-                            outdir=None)
-    
-    go_results_df = go_results.res2d
-    go_results_df['log10_adjusted_pvalue'] = -np.log10(go_results_df['Adjusted P-value'])
+    if gene_set_filter:
+        try:
+            go_results = gp.enrichr(gene_list=list(gene_join_filter),
+                                    gene_sets=gene_set_filter,
+                                    background=list(data['gene'].unique()),
+                                    organism="human",
+                                    outdir=None)
+            go_results_df = go_results.res2d
+            go_results_df['log10_pvalue'] = -np.log10(go_results_df['P-value'])
+            go_results_df['Odds Ratio'] = go_results_df['Odds Ratio'].replace({np.inf: go_results_df['Odds Ratio'].max() })
 
-    top_terms = go_results_df.sort_values(by='Adjusted P-value').head(20)
+            top_terms = go_results_df[go_results_df["P-value"] < 0.1].sort_values(by="P-value").head(20)
 
-    go_fig = go.Figure()
+            go_fig = go.Figure()
 
-    go_fig.add_trace(go.Bar(
-        x=top_terms['Odds Ratio'],
-        y=top_terms['Term'],
-        orientation='h',
-        marker=dict(
-            color=top_terms['log10_adjusted_pvalue'],
-            colorscale='Viridis',
-            colorbar=dict(title='-log10(p-value)')
-        )
-    ))
+            go_fig.add_trace(go.Bar(
+                x=top_terms['log10_pvalue'],
+                y=top_terms['Term'],
+                orientation='h',
+                marker=dict(
+                    color=top_terms['Odds Ratio'],
+                    colorscale='Viridis',
+                    colorbar=dict(title='Odds Ratio')
+                ),
+                hovertemplate=
+                '<b>Term:</b> %{y}<br>'+
+                '<b>-log10(p-value):</b> %{x}<br>'+
+                '<b>Odds Ratio:</b> %{marker.color}<br>'+
+                '<b>Genes:</b> %{customdata}<extra></extra>',
+                customdata=top_terms['Genes'].str.split(';').tolist()                
+            ))
 
-    go_fig.update_layout(
-        title='Top 20 GO Terms',
-        xaxis_title='Odds Ratio',
-        yaxis_title='GO Term',
-        yaxis=dict(autorange="reversed"),
-        template='plotly_white'
-    )
+            go_fig.update_layout(
+                title='Top 20 GO Terms',
+                xaxis_title='-log10(pvalue)',
+                yaxis_title='GO Term',
+                yaxis=dict(autorange="reversed"),
+                template='plotly_white'
+            )
+        except Exception as e:
+            print(f"Error performing enrichment analysis: {e}")
+            go_fig = go.Figure()
+    else:
+        go_fig = go.Figure()
 
     return fig, go_fig
+
 
 # Run the app
 if __name__ == '__main__':
