@@ -47,45 +47,53 @@ app = dash.Dash(__name__)
 app.layout = html.Div([
     html.H1("Interactive Sankey Diagram"),
     html.Div([
-        html.Label("Select left TF_motif:"),
-        dcc.Dropdown(
-            id='left_tf_motif_filter',
-            options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
-            multi=True
-        ),
-    ]),
-    html.Div([
-        html.Label("Select right TF_motif:"),
-        dcc.Dropdown(
-            id='right_tf_motif_filter',
-            options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
-            multi=True
-        ),
-    ]),
-    html.Div([
-        html.Label("Select right and left join mode:"),
-        dcc.RadioItems(
-            id='join_type',
-            options=['inner', 'outer'],
-            value='outer',
-            inline=True),
-    ], style={'margin': '10px auto'}),
-    html.Div([
-        html.Label("Select Direction:"),
-        dcc.Dropdown(
-            id='direction_filter',
-            options=[{'label': dir, 'value': dir} for dir in data['direction'].unique()],
-            multi=True
-        ),
-    ]),
-    html.Div([
-        html.Label("Select Time:"),
-        dcc.Dropdown(
-            id='time_filter',
-            options=[{'label': time, 'value': time} for time in data['time'].unique()],
-            multi=True
-        ),
-    ]),
+        html.Div([
+            html.Label("Select left TF_motif:"),
+            dcc.Dropdown(
+                id='left_tf_motif_filter',
+                options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
+                multi=True
+            ),
+            html.Label("Select Direction:"),
+            dcc.Dropdown(
+                id='left_direction_filter',
+                options=[{'label': dir, 'value': dir} for dir in data['direction'].unique()],
+                multi=True
+            ),
+            html.Label("Select Time:"),
+            dcc.Dropdown(
+                id='left_time_filter',
+                options=[{'label': time, 'value': time} for time in data['time'].unique()],
+                multi=True
+            ),
+        ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+        html.Div([
+            html.Label("Select right TF_motif:"),
+            dcc.Dropdown(
+                id='right_tf_motif_filter',
+                options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
+                multi=True
+            ),
+            html.Label("Select Direction:"),
+            dcc.Dropdown(
+                id='right_direction_filter',
+                options=[{'label': dir, 'value': dir} for dir in data['direction'].unique()],
+                multi=True
+            ),
+            html.Label("Select Time:"),
+            dcc.Dropdown(
+                id='right_time_filter',
+                options=[{'label': time, 'value': time} for time in data['time'].unique()],
+                multi=True
+            ),
+            html.Label("Select right and left join mode:"),
+            dcc.RadioItems(
+                id='join_type',
+                options=['inner', 'outer'],
+                value='outer',
+                inline=True),
+        ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+    ], style={'width': '80%', 'margin': '0 auto', 'display': 'flex', 'justifyContent': 'space-between'}),
     html.Div([
         html.Label("Minimum Score Threshold:"),
         dcc.Slider(
@@ -99,9 +107,9 @@ app.layout = html.Div([
     ], style={'width': '50%', 'margin': '10px auto'}),
     dcc.Graph(
         id='sankey_diagram',
-        style={'height': '80vh', 'width': '100vw'}  # Adjust these values as needed
+        style={'height': '100vh', 'width': '100vw'}  # Adjust these values as needed
     ),
-        html.Div([
+    html.Div([
         html.Label("Select Gene Set:"),
         dcc.Dropdown(
             id='gene_set_filter',
@@ -120,6 +128,7 @@ app.layout = html.Div([
 ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'})
 
 
+
 # Helper function to blend TF_motif color with time greyscale
 def blend_colors(tf_color, time_color, alpha=0.7):
     tf_rgb = np.array(tf_color[:3] + (0.4,))
@@ -133,23 +142,28 @@ def blend_colors(tf_color, time_color, alpha=0.7):
     [Output('sankey_diagram', 'figure'),
      Output('go_enrichment_plot', 'figure')],
     [Input('left_tf_motif_filter', 'value'),
-     Input('right_tf_motif_filter', 'value'),
-     Input('join_type', 'value'),
-     Input('direction_filter', 'value'),
-     Input('time_filter', 'value'),
+     Input('left_direction_filter', 'value'),
+     Input('left_time_filter', 'value'),
      Input('score_threshold', 'value'),
+     Input('right_tf_motif_filter', 'value'),
+     Input('right_direction_filter', 'value'),
+     Input('right_time_filter', 'value'),
+     Input('join_type', 'value'),
      Input('gene_set_filter', 'value')]
 )
-def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direction_filter, time_filter, score_threshold, gene_set_filter):
+def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter):
     if not left_tf_motif_filter:
         return go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
-    direction_filter = direction_filter if direction_filter else ["pos", "neg"]
-    time_filter = time_filter if time_filter else [0,1,2,3,4,5,6,7,8,9]
+    left_direction_filter = left_direction_filter if left_direction_filter else ["pos", "neg"]
+    left_time_filter = left_time_filter if left_time_filter else [0,1,2,3,4,5,6,7,8,9]
 
-    left_genes = set(data.loc[data['TF_motif'].isin(left_tf_motif_filter)& (data['score'].abs() >= score_threshold) & (data['direction'].isin(direction_filter)) & (data['time'].isin(time_filter)), "gene"].unique().tolist())
+    left_genes = set(data.loc[data['TF_motif'].isin(left_tf_motif_filter)& (data['score'].abs() >= score_threshold) & (data['direction'].isin(left_direction_filter)) & (data['time'].isin(left_time_filter)), "gene"].unique().tolist())
+
     if right_tf_motif_filter:
-        right_genes = set(data.loc[data['TF_motif'].isin(right_tf_motif_filter) & (data['score'].abs() >= score_threshold) & (data['direction'].isin(direction_filter)) & (data['time'].isin(time_filter)), "gene"].unique().tolist())
+        right_direction_filter = right_direction_filter if right_direction_filter else ["pos", "neg"]
+        right_time_filter = right_time_filter if right_time_filter else [0,1,2,3,4,5,6,7,8,9]
+        right_genes = set(data.loc[data['TF_motif'].isin(right_tf_motif_filter) & (data['score'].abs() >= score_threshold) & (data['direction'].isin(right_direction_filter)) & (data['time'].isin(right_time_filter)), "gene"].unique().tolist())
         gene_join_filter = left_genes.union(right_genes) if join_type == "outer" else left_genes.intersection(right_genes)
     else:
         gene_join_filter = left_genes
@@ -157,8 +171,8 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direct
     filtered_data = data[data['TF_motif'].isin(left_tf_motif_filter) &
                          data['gene'].isin(gene_join_filter) &
                           (data['score'].abs() >= score_threshold) &
-                          (data['direction'].isin(direction_filter)) &
-                          (data['time'].isin(time_filter))]
+                          (data['direction'].isin(left_direction_filter)) &
+                          (data['time'].isin(left_time_filter))]
 
     df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'gene']).agg({'score': 'sum'}).reset_index()
     df_summary['score'] = df_summary['score'].abs()
@@ -174,8 +188,8 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direct
         right_filtered_data = data[data['TF_motif'].isin(right_tf_motif_filter) &
                                    data['gene'].isin(gene_join_filter) &
                                     (data['score'].abs() >= score_threshold) &
-                                      data['direction'].isin(direction_filter) &
-                                        data['time'].isin(time_filter)]
+                                      data['direction'].isin(right_direction_filter) &
+                                        data['time'].isin(right_time_filter)].assign(TF_motif = lambda x: " " + x["TF_motif"])
         right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'gene']).agg({'score': 'sum'}).reset_index()
         right_df_summary['score'] = right_df_summary['score'].abs()
 
@@ -200,8 +214,8 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direct
     for node in nodes:
         if (node.split("_")[-1] in direction_colors.keys()) | (node.split("_")[-1] in time_colors.keys()):
             node_colors.append("rgba" + str(color_palette[node.split("_")[-1]]))
-        elif node in color_palette.keys():
-            node_colors.append("rgba" + str(color_palette[node]))
+        elif node.strip() in color_palette.keys():
+            node_colors.append("rgba" + str(color_palette[node.strip()]))
         else:
             node_colors.append('rgba(0, 0, 0, 0.8)')  # Default color for genes
 
@@ -319,7 +333,7 @@ def update_sankey(left_tf_motif_filter, right_tf_motif_filter, join_type, direct
                 links['source'].append(node_indices[direction])
                 links['target'].append(node_indices[tf_motif])
                 links['value'].append(score)
-                blended_color = blend_colors(tf_motif_colors[tf_motif], time_colors[str(row['time'])])
+                blended_color = blend_colors(tf_motif_colors[tf_motif.strip()], time_colors[str(row['time'])])
                 links['color'].append(blended_color)
 
     fig = go.Figure(data=[go.Sankey(
