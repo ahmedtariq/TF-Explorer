@@ -10,7 +10,7 @@ import gseapy as gp
 
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description='Run Dash app with a specified CSV file.')
-parser.add_argument('file_path', type=str, help='Path to the CSV file')
+parser.add_argument('file_path', type=str,default= "./q_dir_motif_gene_shap.csv", help='Path to the CSV file',)
 args = parser.parse_args()
 
 # Load the dataset
