@@ -42,6 +42,7 @@ background_color = 'rgba(255, 255, 255, 0.0)'
 
 # Create the Dash app
 app = dash.Dash(__name__)
+server = app.server
 
 # Layout of the app
 app.layout = html.Div([
