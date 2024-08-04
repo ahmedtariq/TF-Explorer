@@ -7,6 +7,7 @@ import seaborn as sns
 import numpy as np
 import colorcet as cc
 import gseapy as gp
+import os
 
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description='Run Dash app with a specified CSV file.')
@@ -405,4 +406,5 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
 
 # Run the app
 if __name__ == '__main__':
-    app.run_server(debug=True, port=8050)
+    port = int(os.environ.get('PORT', 8050))
+    app.run_server(debug=True, host='0.0.0.0', port=port)
