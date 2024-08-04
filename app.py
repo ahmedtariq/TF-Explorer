@@ -2,7 +2,6 @@ import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
 import pandas as pd
-import argparse
 import seaborn as sns
 import numpy as np
 import colorcet as cc
@@ -10,12 +9,11 @@ import gseapy as gp
 import os
 
 # Command-line argument parsing
-parser = argparse.ArgumentParser(description='Run Dash app with a specified CSV file.')
-parser.add_argument('file_path', type=str,default= "./q_dir_motif_gene_shap.csv", help='Path to the CSV file',)
-args = parser.parse_args()
+
+file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap.csv')
 
 # Load the dataset
-data = pd.read_csv(args.file_path)
+data = pd.read_csv(file_path)
 
 # Generate a large color palette for TF_motif
 tf_motifs = data['TF_motif'].unique()
