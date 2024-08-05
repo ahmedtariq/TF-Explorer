@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, State
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
 import pandas as pd
@@ -45,6 +45,7 @@ background_color = 'rgba(255, 255, 255, 0.0)'
 app = dash.Dash(__name__)
 server = app.server
 
+
 # Layout of the app
 app.layout = html.Div([
     html.Div([
@@ -72,14 +73,16 @@ app.layout = html.Div([
             html.Label("Select Direction:"),
             dcc.Dropdown(
                 id='left_direction_filter',
-                options=[{'label': dir, 'value': dir} for dir in data['direction'].unique()],
-                multi=True
+                options=[],
+                multi=True,
+                value=['pos', 'neg']
             ),
             html.Label("Select Time:"),
             dcc.Dropdown(
                 id='left_time_filter',
-                options=[{'label': time, 'value': time} for time in data['time'].unique()],
-                multi=True
+                options=[],
+                multi=True,
+                disabled=True
             ),
         ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
         html.Div([
@@ -92,14 +95,16 @@ app.layout = html.Div([
             html.Label("Select Direction:"),
             dcc.Dropdown(
                 id='right_direction_filter',
-                options=[{'label': dir, 'value': dir} for dir in data['direction'].unique()],
-                multi=True
+                options=[],
+                multi=True,
+                value=['pos', 'neg']
             ),
             html.Label("Select Time:"),
             dcc.Dropdown(
                 id='right_time_filter',
-                options=[{'label': time, 'value': time} for time in data['time'].unique()],
-                multi=True
+                options=[],
+                multi=True,
+                disabled=True
             ),
             html.Label("Select right and left join mode:"),
             dcc.RadioItems(
@@ -161,9 +166,6 @@ app.layout = html.Div([
     ], style={'display': 'flex', 'flexDirection': 'row', 'alignItems': 'center', 'justifyContent': 'space-around'})
 ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'})
 
-
-
-
 # Helper function to blend TF_motif color with time greyscale
 def blend_colors(tf_color, time_color, alpha=0.7):
     tf_rgb = np.array(tf_color[:3] + (0.4,))
@@ -171,6 +173,67 @@ def blend_colors(tf_color, time_color, alpha=0.7):
     blended_rgb = (1 - alpha) * tf_rgb + alpha * time_rgb
     return "rgba" + str(tuple(blended_rgb))
 
+# Callback to update direction and time filters based on selected TF_motifs
+@app.callback(
+    [Output('left_direction_filter', 'options'),
+     Output('left_direction_filter', 'value'),
+     Output('left_direction_filter', 'disabled')],
+    [Input('left_tf_motif_filter', 'value')]
+)
+def update_left_direction_filter(selected_tf_motifs):
+    if not selected_tf_motifs:
+        return [], ['pos', 'neg'], True
+
+    filtered_data = data[data['TF_motif'].isin(selected_tf_motifs)]
+    directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
+
+    return directions, ['pos', 'neg'], False
+
+@app.callback(
+    [Output('right_direction_filter', 'options'),
+     Output('right_direction_filter', 'value'),
+     Output('right_direction_filter', 'disabled')],
+    [Input('right_tf_motif_filter', 'value')]
+)
+def update_right_direction_filter(selected_tf_motifs):
+    if not selected_tf_motifs:
+        return [], ['pos', 'neg'], True
+
+    filtered_data = data[data['TF_motif'].isin(selected_tf_motifs)]
+    directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
+
+    return directions, ['pos', 'neg'], False
+
+# Callback to update time filters based on selected TF_motifs and directions
+@app.callback(
+    [Output('left_time_filter', 'options'),
+     Output('left_time_filter', 'disabled')],
+    [Input('left_tf_motif_filter', 'value'),
+     Input('left_direction_filter', 'value')]
+)
+def update_left_time_filter(selected_tf_motifs, selected_directions):
+    if not selected_tf_motifs or not selected_directions:
+        return [], True
+
+    filtered_data = data[(data['TF_motif'].isin(selected_tf_motifs)) & (data['direction'].isin(selected_directions))]
+    times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
+
+    return times, False
+
+@app.callback(
+    [Output('right_time_filter', 'options'),
+     Output('right_time_filter', 'disabled')],
+    [Input('right_tf_motif_filter', 'value'),
+     Input('right_direction_filter', 'value')]
+)
+def update_right_time_filter(selected_tf_motifs, selected_directions):
+    if not selected_tf_motifs or not selected_directions:
+        return [], True
+
+    filtered_data = data[(data['TF_motif'].isin(selected_tf_motifs)) & (data['direction'].isin(selected_directions))]
+    times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
+
+    return times, False
 
 # Callback to update the Sankey diagram based on filters
 @app.callback(
@@ -391,42 +454,48 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
     )])
 
     # Density Plot with Rug Plot
-    background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + [right_tf_motif_filter if right_tf_motif_filter else ""])].drop_duplicates("peak")['distance']
-    filtered_distances = filtered_data['distance']
-    rug_text = [(filtered_data['gene'] + "  " + filtered_data['peak']).tolist(), None]
+    if not filtered_data.empty:
+        try:
+            background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + [right_tf_motif_filter if right_tf_motif_filter else ""])].drop_duplicates("peak")['distance']
+            filtered_distances = filtered_data['distance']
+            rug_text = [(filtered_data['gene'] + "  " + filtered_data['peak']).tolist(), None]
 
-    # Perform Kolmogorov-Smirnov test
-    _, p_value = ks_2samp(filtered_distances, background_distances)
-    p_value_text = f'p-value: {p_value:.2e}'
+            # Perform Kolmogorov-Smirnov test
+            _, p_value = ks_2samp(filtered_distances, background_distances)
+            p_value_text = f'p-value: {p_value:.2e}'
 
-    fig_density = ff.create_distplot(
-        [filtered_distances, background_distances], ['Filtered Peaks', 'Background'],
-        bin_size=10000, rug_text=rug_text, colors=['rgb(0, 0, 255)', 'rgba(200, 200, 200, 0.6)'])
-    fig_density.update_xaxes(range=[-200000, 200000])
-    fig_density.add_vline(x=0, line_width=2, line_dash="dash", line_color="black", annotation_text="TSS", annotation_position="top right")
-    # Adjust the layout to reduce the height of the rug plot
-    fig_density.update_layout(
-        height=800,
-        margin=dict(t=50, b=50, l=50, r=50),
-        yaxis2=dict(
-            domain=[0, 0.1]
-        ),
-        yaxis=dict(
-            domain=[0.15, 1]
-        ),
-        annotations=[dict(
-            xref='paper', yref='paper',
-            x=0.75, y=0.99,
-            text=p_value_text,
-            showarrow=False,
-            font=dict(
-                size=14,
-                color="black"
-            ),
-            align="right"
-        )]
-    )
-
+            fig_density = ff.create_distplot(
+                [filtered_distances, background_distances], ['Filtered Peaks', 'Background'],
+                bin_size=10000, rug_text=rug_text, colors=['rgb(0, 0, 255)', 'rgba(200, 200, 200, 0.6)'])
+            fig_density.update_xaxes(range=[-200000, 200000])
+            fig_density.add_vline(x=0, line_width=2, line_dash="dash", line_color="black", annotation_text="TSS", annotation_position="top right")
+            # Adjust the layout to reduce the height of the rug plot
+            fig_density.update_layout(
+                height=800,
+                margin=dict(t=50, b=50, l=50, r=50),
+                yaxis2=dict(
+                    domain=[0, 0.1]
+                ),
+                yaxis=dict(
+                    domain=[0.15, 1]
+                ),
+                annotations=[dict(
+                    xref='paper', yref='paper',
+                    x=0.75, y=0.99,
+                    text=p_value_text,
+                    showarrow=False,
+                    font=dict(
+                        size=14,
+                        color="black"
+                    ),
+                    align="right"
+                )]
+            )
+        except Exception as e:
+            print(f"Error performing distance analysis: {e}")
+            fig_density = go.Figure()
+    else:
+        fig_density = go.Figure()
     # Perform GO enrichment analysis using gseapy
     if gene_set_filter:
         try:
