@@ -1,6 +1,7 @@
 import dash
 from dash import dcc, html, Input, Output
 import plotly.graph_objects as go
+import plotly.figure_factory as ff
 import pandas as pd
 import seaborn as sns
 import numpy as np
@@ -109,22 +110,29 @@ app.layout = html.Div([
         id='sankey_diagram',
         style={'height': '100vh', 'width': '100vw'}  # Adjust these values as needed
     ),
-    html.Div([
-        html.Label("Select Gene Set:"),
-        dcc.Dropdown(
-            id='gene_set_filter',
-            options=[
-                {'label': 'GO Molecular Function 2015', 'value': 'GO_Molecular_Function_2015'},
-                {'label': 'GO Cellular Component 2015', 'value': 'GO_Cellular_Component_2015'},
-                {'label': 'GO Biological Process 2015', 'value': 'GO_Biological_Process_2015'}
-            ],
-            multi=False
+     html.Div([
+        dcc.Graph(
+            id='distance_density_plot',
+            style={'height': '80vh', 'width': '40vw', 'display': 'inline-block'}  # Adjust these values as needed
         ),
-    ], style={'width': '50%', 'margin': '10px auto'}),
-    dcc.Graph(
-        id='go_enrichment_plot',
-        style={'height': '80vh', 'width': '90vw'}  # Adjust these values as needed
-    )
+        html.Div([
+            html.Label("Select Gene Set:"),
+            dcc.Dropdown(
+                id='gene_set_filter',
+                style={'width': '20vw'},
+                options=[
+                    {'label': 'GO Molecular Function 2015', 'value': 'GO_Molecular_Function_2015'},
+                    {'label': 'GO Cellular Component 2015', 'value': 'GO_Cellular_Component_2015'},
+                    {'label': 'GO Biological Process 2015', 'value': 'GO_Biological_Process_2015'}
+                ],
+                multi=False
+            ),
+            dcc.Graph(
+                id='go_enrichment_plot',
+                style={'height': '70vh', 'width': '50vw'}  # Adjust these values as needed
+            )
+        ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'justifyContent': 'space-around'})
+    ], style={'display': 'flex', 'flexDirection': 'row', 'alignItems': 'center', 'justifyContent': 'space-around'})
 ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'})
 
 
@@ -140,6 +148,7 @@ def blend_colors(tf_color, time_color, alpha=0.7):
 # Callback to update the Sankey diagram based on filters
 @app.callback(
     [Output('sankey_diagram', 'figure'),
+     Output('distance_density_plot', 'figure'),
      Output('go_enrichment_plot', 'figure')],
     [Input('left_tf_motif_filter', 'value'),
      Input('left_direction_filter', 'value'),
@@ -153,7 +162,7 @@ def blend_colors(tf_color, time_color, alpha=0.7):
 )
 def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter):
     if not left_tf_motif_filter:
-        return go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
+        return go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
     left_direction_filter = left_direction_filter if left_direction_filter else ["pos", "neg"]
     left_time_filter = left_time_filter if left_time_filter else [0,1,2,3,4,5,6,7,8,9]
@@ -353,6 +362,28 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
         )
     )])
 
+    # Density Plot with Rug Plot
+    background_distances = data['distance']
+    filtered_distances = filtered_data['distance']
+    rug_text = [(filtered_data['gene'] + "  " + filtered_data['peak']).tolist(), None]
+
+    fig_density = ff.create_distplot(
+        [filtered_distances, background_distances], ['Filtered Peaks', 'Background'],
+        bin_size=10000, rug_text=rug_text, colors=['rgb(0, 0, 255)', 'rgba(200, 200, 200, 0.6)'])
+    fig_density.update_xaxes(range=[-200000, 200000])
+    fig_density.add_vline(x=0, line_width=2, line_dash="dash", line_color="black", annotation_text="TSS", annotation_position="top right")
+    # Adjust the layout to reduce the height of the rug plot
+    fig_density.update_layout(
+        height=800,
+        margin=dict(t=50, b=50, l=50, r=50),
+        yaxis2=dict(
+            domain=[0, 0.1]
+        ),
+        yaxis=dict(
+            domain=[0.15, 1]
+        )
+    )
+
     # Perform GO enrichment analysis using gseapy
     if gene_set_filter:
         try:
@@ -391,7 +422,8 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
                 xaxis_title='-log10(pvalue)',
                 yaxis_title='GO Term',
                 yaxis=dict(autorange="reversed"),
-                template='plotly_white'
+                template='plotly_white',
+                height=750
             )
         except Exception as e:
             print(f"Error performing enrichment analysis: {e}")
@@ -399,7 +431,7 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
     else:
         go_fig = go.Figure()
 
-    return fig, go_fig
+    return fig, fig_density, go_fig
 
 
 # Run the app
