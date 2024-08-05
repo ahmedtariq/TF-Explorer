@@ -458,7 +458,7 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
     # Density Plot with Rug Plot
     if not filtered_data.empty:
         try:
-            background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + [right_tf_motif_filter if right_tf_motif_filter else ""])].drop_duplicates("peak")['distance']
+            background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + (right_tf_motif_filter or [""]))].drop_duplicates("peak")['distance']
             filtered_distances = filtered_data['distance']
             rug_text = [(filtered_data['gene'] + "  " + filtered_data['peak']).tolist(), None]
 
@@ -501,7 +501,7 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
     # Perform GO enrichment analysis using gseapy
     if gene_set_filter:
         try:
-            background_genes = data.drop_duplicates("gene")['gene'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + [right_tf_motif_filter if right_tf_motif_filter else ""])].drop_duplicates("gene")['gene']
+            background_genes = data.drop_duplicates("gene")['gene'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + (right_tf_motif_filter or [""]))].drop_duplicates("gene")['gene']
             go_results = gp.enrichr(gene_list=list(gene_join_filter),
                                     gene_sets=gene_set_filter,
                                     background=list(background_genes),
