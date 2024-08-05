@@ -46,6 +46,19 @@ server = app.server
 
 # Layout of the app
 app.layout = html.Div([
+    html.Div([
+        html.Div([
+            html.A(
+                html.Img(src="https://icb.uni-saarland.de/wp-content/uploads/2020/10/icb_banner.png", style={'height': '100px'}),
+                href="https://icb.uni-saarland.de/"
+            )
+        ], style={'width': '10%', 'display': 'inline-block', 'verticalAlign': 'middle'}),
+        html.Div([
+            html.A("Ahmed T Osman", href="mailto:ahos00001@stud.uni-saarland.de"),
+            html.Br(),
+            html.A("LinkedIn Profile", href="https://www.linkedin.com/in/atosman")
+        ], style={'width': '90%', 'display': 'inline-block', 'textAlign': 'right', 'verticalAlign': 'middle'})
+    ], style={'width': '100%', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '10px 0'}),
     html.H1("TF Explorer"),
     html.Div([
         html.Div([
