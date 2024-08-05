@@ -5,6 +5,7 @@ import plotly.figure_factory as ff
 import pandas as pd
 import seaborn as sns
 import numpy as np
+from scipy.stats import ks_2samp
 import colorcet as cc
 import gseapy as gp
 import os
@@ -123,7 +124,19 @@ app.layout = html.Div([
         id='sankey_diagram',
         style={'height': '100vh', 'width': '100vw'}  # Adjust these values as needed
     ),
-     html.Div([
+ html.Div([
+        html.Label("Background:"),
+        dcc.RadioItems(
+            id='background_choice',
+            options=[
+                {'label': 'All', 'value': 'all'},
+                {'label': 'Filtered by TF', 'value': 'filtered'}
+            ],
+            value='all',
+            inline=True
+        )
+    ], style={'width': '80%', 'margin': '20px auto', 'display': 'flex', 'justifyContent': 'center'}),
+    html.Div([
         dcc.Graph(
             id='distance_density_plot',
             style={'height': '80vh', 'width': '40vw', 'display': 'inline-block'}  # Adjust these values as needed
@@ -150,6 +163,7 @@ app.layout = html.Div([
 
 
 
+
 # Helper function to blend TF_motif color with time greyscale
 def blend_colors(tf_color, time_color, alpha=0.7):
     tf_rgb = np.array(tf_color[:3] + (0.4,))
@@ -171,9 +185,10 @@ def blend_colors(tf_color, time_color, alpha=0.7):
      Input('right_direction_filter', 'value'),
      Input('right_time_filter', 'value'),
      Input('join_type', 'value'),
-     Input('gene_set_filter', 'value')]
+     Input('gene_set_filter', 'value'),
+     Input('background_choice', 'value')]
 )
-def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter):
+def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter, background_choice):
     if not left_tf_motif_filter:
         return go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
@@ -376,9 +391,13 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
     )])
 
     # Density Plot with Rug Plot
-    background_distances = data['distance']
+    background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + [right_tf_motif_filter if right_tf_motif_filter else ""])].drop_duplicates("peak")['distance']
     filtered_distances = filtered_data['distance']
     rug_text = [(filtered_data['gene'] + "  " + filtered_data['peak']).tolist(), None]
+
+    # Perform Kolmogorov-Smirnov test
+    _, p_value = ks_2samp(filtered_distances, background_distances)
+    p_value_text = f'p-value: {p_value:.2e}'
 
     fig_density = ff.create_distplot(
         [filtered_distances, background_distances], ['Filtered Peaks', 'Background'],
@@ -394,15 +413,27 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
         ),
         yaxis=dict(
             domain=[0.15, 1]
-        )
+        ),
+        annotations=[dict(
+            xref='paper', yref='paper',
+            x=0.75, y=0.99,
+            text=p_value_text,
+            showarrow=False,
+            font=dict(
+                size=14,
+                color="black"
+            ),
+            align="right"
+        )]
     )
 
     # Perform GO enrichment analysis using gseapy
     if gene_set_filter:
         try:
+            background_genes = data.drop_duplicates("gene")['gene'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + [right_tf_motif_filter if right_tf_motif_filter else ""])].drop_duplicates("gene")['gene']
             go_results = gp.enrichr(gene_list=list(gene_join_filter),
                                     gene_sets=gene_set_filter,
-                                    background=list(data['gene'].unique()),
+                                    background=list(background_genes),
                                     organism="human",
                                     outdir=None)
             go_results_df = go_results.res2d
