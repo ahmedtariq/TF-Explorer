@@ -46,7 +46,7 @@ server = app.server
 
 # Layout of the app
 app.layout = html.Div([
-    html.H1("Interactive Sankey Diagram"),
+    html.H1("TF Explorer"),
     html.Div([
         html.Div([
             html.Label("Select left TF_motif:"),
