@@ -51,16 +51,18 @@ app.layout = html.Div([
     html.Div([
         html.Div([
             html.A(
-                html.Img(src="https://icb.uni-saarland.de/wp-content/uploads/2020/10/icb_banner.png", style={'height': '100px'}),
+                html.Img(src="https://icb.uni-saarland.de/wp-content/uploads/2020/10/icb_banner.png", style={'height': '100px', 'border-radius': '10px'}),
                 href="https://icb.uni-saarland.de/"
             )
-        ], style={'width': '10%', 'display': 'inline-block', 'verticalAlign': 'middle'}),
+        ], style={'width': '15%', 'display': 'inline-block', 'verticalAlign': 'middle', 'padding': '10px'}),
         html.Div([
-            html.A("Ahmed T Osman", href="mailto:ahos00001@stud.uni-saarland.de"),
-            html.Br(),
-            html.A("LinkedIn Profile", href="https://www.linkedin.com/in/atosman")
-        ], style={'width': '90%', 'display': 'inline-block', 'textAlign': 'right', 'verticalAlign': 'middle'})
-    ], style={'width': '100%', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '10px 0'}),
+            html.Div([
+                html.A("Ahmed T Osman", href="mailto:ahos00001@stud.uni-saarland.de", style={'color': '#007bff', 'fontSize': '20px', 'fontWeight': 'bold', 'textDecoration': 'none'}),
+                html.Br(),
+                html.A("LinkedIn Profile", href="https://www.linkedin.com/in/atosman", style={'color': '#007bff', 'fontSize': '16px', 'textDecoration': 'none'}),
+            ], style={'textAlign': 'right', 'padding': '10px'})
+        ], style={'width': '80%', 'display': 'inline-block', 'verticalAlign': 'middle'})
+    ], style={'width': '100%', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '20px 0', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #dee2e6'}),
     html.H1("TF Explorer"),
     html.Div([
         html.Div([
