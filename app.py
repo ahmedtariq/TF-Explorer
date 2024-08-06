@@ -425,18 +425,20 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
                 links['source'].append(node_indices[gene])
                 links['target'].append(node_indices[time])
                 links['value'].append(score)
-                links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+                blended_color = blend_colors(tf_motif_colors[tf_motif.strip()], time_colors[str(row['time'])])
+                links['color'].append(blended_color)
+                
 
                 links['source'].append(node_indices[time])
                 links['target'].append(node_indices[direction])
                 links['value'].append(score)
-                links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+                links['color'].append("rgba" + str(color_palette.get(tf_motif.strip(), (0, 0, 0, 0.4))))
 
                 links['source'].append(node_indices[direction])
                 links['target'].append(node_indices[tf_motif])
                 links['value'].append(score)
-                blended_color = blend_colors(tf_motif_colors[tf_motif.strip()], time_colors[str(row['time'])])
-                links['color'].append(blended_color)
+                links['color'].append("rgba" + str(color_palette.get(tf_motif.strip(), (0, 0, 0, 0.4))))
+
 
     fig = go.Figure(data=[go.Sankey(
         node=dict(
