@@ -10,43 +10,38 @@ import colorcet as cc
 import gseapy as gp
 import os
 
-# Command-line argument parsing
-
-file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap.csv')
-
 # Load the dataset
+file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap.csv')
 data = pd.read_csv(file_path)
 
-# Generate a large color palette for TF_motif
-tf_motifs = data['TF_motif'].unique()
-num_tf_motifs = len(tf_motifs)
-tf_motif_cmap = sns.color_palette(cc.glasbey, n_colors=num_tf_motifs)
-tf_motif_colors = {tf_motifs[i]: tuple(tf_motif_cmap[i]) + (0.8,) for i in range(num_tf_motifs)}
+# Generate color palettes
+def generate_color_palettes(data):
+    tf_motifs = data['TF_motif'].unique()
+    num_tf_motifs = len(tf_motifs)
+    tf_motif_cmap = sns.color_palette(cc.glasbey, n_colors=num_tf_motifs)
+    tf_motif_colors = {tf_motifs[i]: tuple(tf_motif_cmap[i]) + (0.8,) for i in range(num_tf_motifs)}
 
-# Generate a gradient color palette for time values from 1 to 10
-time_values = data["time"].unique()
-num_time_values = len(time_values)
-time_cmap = sns.color_palette("coolwarm", n_colors=num_time_values)
-time_colors = {str(time_values[i]): tuple(time_cmap[i]) + (0.8,) for i in range(num_time_values)}
+    time_values = data["time"].unique()
+    num_time_values = len(time_values)
+    time_cmap = sns.color_palette("coolwarm", n_colors=num_time_values)
+    time_colors = {str(time_values[i]): tuple(time_cmap[i]) + (0.8,) for i in range(num_time_values)}
 
-# Fixed colors for direction
-direction_colors = {
-    'pos': (44, 160, 44, 0.8),  # Green
-    'neg': (214, 39, 40, 0.8)  # Red
-}
+    direction_colors = {
+        'pos': (44, 160, 44, 0.8),
+        'neg': (214, 39, 40, 0.8)
+    }
 
-# Combine all color palettes
-color_palette = {**tf_motif_colors, **time_colors, **direction_colors}
+    color_palette = {**tf_motif_colors, **time_colors, **direction_colors}
+    return color_palette, tf_motif_colors, time_colors, direction_colors
 
-# Background color (same as the dummy nodes and links)
+color_palette, tf_motif_colors, time_colors, direction_colors = generate_color_palettes(data)
 background_color = 'rgba(255, 255, 255, 0.0)'
 
 # Create the Dash app
 app = dash.Dash(__name__)
 server = app.server
 
-
-# Layout of the app
+# App layout
 app.layout = html.Div([
     html.Div([
         html.Div([
@@ -131,7 +126,7 @@ app.layout = html.Div([
         id='sankey_diagram',
         style={'height': '100vh', 'width': '100vw'}  # Adjust these values as needed
     ),
- html.Div([
+    html.Div([
         html.Label("Background:"),
         dcc.RadioItems(
             id='background_choice',
@@ -175,7 +170,7 @@ def blend_colors(tf_color, time_color, alpha=0.7):
     blended_rgb = (1 - alpha) * tf_rgb + alpha * time_rgb
     return "rgba" + str(tuple(blended_rgb))
 
-# Callback to update direction and time filters based on selected TF_motifs
+# Callbacks to update filters based on selected TF_motifs and directions
 @app.callback(
     [Output('left_direction_filter', 'options'),
      Output('left_direction_filter', 'value'),
@@ -206,7 +201,6 @@ def update_right_direction_filter(selected_tf_motifs):
 
     return directions, ['pos', 'neg'], False
 
-# Callback to update time filters based on selected TF_motifs and directions
 @app.callback(
     [Output('left_time_filter', 'options'),
      Output('left_time_filter', 'disabled')],
@@ -237,7 +231,7 @@ def update_right_time_filter(selected_tf_motifs, selected_directions):
 
     return times, False
 
-# Callback to update the Sankey diagram based on filters
+# Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
 @app.callback(
     [Output('sankey_diagram', 'figure'),
      Output('distance_density_plot', 'figure'),
@@ -253,19 +247,27 @@ def update_right_time_filter(selected_tf_motifs, selected_directions):
      Input('gene_set_filter', 'value'),
      Input('background_choice', 'value')]
 )
-def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter, background_choice):
+def update_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter, background_choice):
     if not left_tf_motif_filter:
         return go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
     left_direction_filter = left_direction_filter if left_direction_filter else ["pos", "neg"]
     left_time_filter = left_time_filter if left_time_filter else [0,1,2,3,4,5,6,7,8,9]
 
-    left_genes = set(data.loc[data['TF_motif'].isin(left_tf_motif_filter)& (data['score'].abs() >= score_threshold) & (data['direction'].isin(left_direction_filter)) & (data['time'].isin(left_time_filter)), "gene"].unique().tolist())
+    left_genes = set(data.loc[data['TF_motif'].isin(left_tf_motif_filter) & 
+                             (data['score'].abs() >= score_threshold) & 
+                             (data['direction'].isin(left_direction_filter)) & 
+                             (data['time'].isin(left_time_filter)), 
+                             "gene"].unique().tolist())
 
     if right_tf_motif_filter:
         right_direction_filter = right_direction_filter if right_direction_filter else ["pos", "neg"]
         right_time_filter = right_time_filter if right_time_filter else [0,1,2,3,4,5,6,7,8,9]
-        right_genes = set(data.loc[data['TF_motif'].isin(right_tf_motif_filter) & (data['score'].abs() >= score_threshold) & (data['direction'].isin(right_direction_filter)) & (data['time'].isin(right_time_filter)), "gene"].unique().tolist())
+        right_genes = set(data.loc[data['TF_motif'].isin(right_tf_motif_filter) & 
+                                  (data['score'].abs() >= score_threshold) & 
+                                  (data['direction'].isin(right_direction_filter)) & 
+                                  (data['time'].isin(right_time_filter)), 
+                                  "gene"].unique().tolist())
         gene_join_filter = left_genes.union(right_genes) if join_type == "outer" else left_genes.intersection(right_genes)
     else:
         gene_join_filter = left_genes
@@ -279,6 +281,15 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
     df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
     df_summary['score'] = df_summary['score'].abs()
 
+    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary, right_tf_motif_filter, gene_join_filter, score_threshold, left_direction_filter, left_time_filter, right_direction_filter, right_time_filter, join_type, tf_motif_colors, time_colors, background_color, color_palette)
+
+    sankey_fig = create_sankey_figure(nodes, links, node_colors)
+    distance_density_fig = create_distance_density_plot(filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+    go_enrichment_fig = create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+
+    return sankey_fig, distance_density_fig, go_enrichment_fig
+
+def generate_sankey_nodes_and_links(df_summary, right_tf_motif_filter, gene_join_filter, score_threshold, left_direction_filter, left_time_filter, right_direction_filter, right_time_filter, join_type, tf_motif_colors, time_colors, background_color, color_palette):
     nodes = list(pd.concat([
         df_summary['TF_motif'],
         df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1),
@@ -305,23 +316,36 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
     nodes = list(pd.Series(nodes).unique())
     node_indices = {node: i for i, node in enumerate(nodes)}
 
-    links = {
-        'source': [],
-        'target': [],
-        'value': [],
-        'color': [],
-        'label': [],
-        'hovercolor': []
-    }
+    links = create_sankey_links(df_summary, node_indices, tf_motif_colors, time_colors, color_palette, None, left = True)
+    node_colors = create_sankey_node_colors(nodes, direction_colors, time_colors, color_palette)
 
-    node_colors = []
-    for node in nodes:
-        if (node.split("_")[-1] in direction_colors.keys()) | (node.split("_")[-1] in time_colors.keys()):
-            node_colors.append("rgba" + str(color_palette[node.split("_")[-1]]))
-        elif node.strip() in color_palette.keys():
-            node_colors.append("rgba" + str(color_palette[node.strip()]))
-        else:
-            node_colors.append('rgba(0, 0, 0, 0.8)')  # Default color for genes
+    if right_tf_motif_filter:
+        right_gene_set = set(right_df_summary['gene'])
+        left_gene_set = set(df_summary['gene'])
+        unconnected_left_genes = left_gene_set - right_gene_set
+        unconnected_right_genes = right_gene_set - left_gene_set
+
+        add_dummy_nodes_and_links(unconnected_left_genes, unconnected_right_genes, nodes, node_indices, links, background_color, node_colors)
+        links = create_sankey_links(right_df_summary, node_indices, tf_motif_colors, time_colors, color_palette, links, left= False)
+    
+    return nodes, node_indices, links, node_colors
+
+def create_sankey_links(df_summary, node_indices, tf_motif_colors, time_colors, color_palette, links, left = True):
+    if links is None:
+        links = {
+            'source': [],
+            'target': [],
+            'value': [],
+            'color': [],
+            'label': [],
+            'hovercolor': []
+        }
+    if left:
+        a = 'source'
+        b = 'target'
+    else:
+        a = 'target'
+        b = 'source'        
 
     for _, row in df_summary.iterrows():
         tf_motif = row['TF_motif']
@@ -331,144 +355,118 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
         peak = row['peak']
         score = row['score']
 
-        links['source'].append(node_indices[tf_motif])
-        links['target'].append(node_indices[direction])
+        links[a].append(node_indices[tf_motif])
+        links[b].append(node_indices[direction])
         links['value'].append(score)
-        links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+        links['color'].append("rgba" + str(color_palette.get(tf_motif.strip(), (0, 0, 0, 0.4))))
         links['label'].append('')
         links['hovercolor'].append(links['color'][-1])
 
-        links['source'].append(node_indices[direction])
-        links['target'].append(node_indices[time])
+        links[a].append(node_indices[direction])
+        links[b].append(node_indices[time])
         links['value'].append(score)
-        links['color'].append("rgba" + str(color_palette.get(tf_motif, (0, 0, 0, 0.4))))
+        links['color'].append("rgba" + str(color_palette.get(tf_motif.strip(), (0, 0, 0, 0.4))))
         links['label'].append('')
         links['hovercolor'].append(links['color'][-1])
 
-        links['source'].append(node_indices[time])
-        links['target'].append(node_indices[gene])
+        links[a].append(node_indices[time])
+        links[b].append(node_indices[gene])
         links['value'].append(score)
-        blended_color = blend_colors(tf_motif_colors[tf_motif], time_colors[str(row['time'])])
+        blended_color = blend_colors(tf_motif_colors[tf_motif.strip()], time_colors[str(row['time'])])
         links['color'].append(blended_color)
         links['label'].append('peak: ' + peak)
         links['hovercolor'].append("mediumturquoise")
 
-    if right_tf_motif_filter:
-        right_gene_set = set(right_df_summary['gene'])
-        left_gene_set = set(df_summary['gene'])
-        unconnected_left_genes = left_gene_set - right_gene_set
-        unconnected_right_genes = right_gene_set - left_gene_set
+    return links
 
-        # Add dummy nodes and links for unconnected left genes
-        for gene in unconnected_left_genes:
-            dummy_tf = ''
-            dummy_direction = ' '
-            dummy_time = '  '
+def create_sankey_node_colors(nodes, direction_colors, time_colors, color_palette):
+    node_colors = []
+    for node in nodes:
+        if (node.split("_")[-1] in direction_colors.keys()) | (node.split("_")[-1] in time_colors.keys()):
+            node_colors.append("rgba" + str(color_palette[node.split("_")[-1]]))
+        elif node.strip() in color_palette.keys():
+            node_colors.append("rgba" + str(color_palette[node.strip()]))
+        else:
+            node_colors.append('rgba(0, 0, 0, 0.8)')  # Default color for genes
+    return node_colors
 
-            if dummy_tf not in nodes:
-                nodes.append(dummy_tf)
-                nodes.append(dummy_direction)
-                nodes.append(dummy_time)
-                node_indices[dummy_tf] = len(node_indices)
-                node_indices[dummy_direction] = len(node_indices)
-                node_indices[dummy_time] = len(node_indices)
-                node_colors.append(background_color)
-                node_colors.append(background_color)
-                node_colors.append(background_color)
+def add_dummy_nodes_and_links(unconnected_left_genes, unconnected_right_genes, nodes, node_indices, links, background_color, node_colors):
+    for gene in unconnected_left_genes:
+        dummy_tf = ''
+        dummy_direction = ' '
+        dummy_time = '  '
 
-            links['source'].append(node_indices[gene])
-            links['target'].append(node_indices[dummy_time])
-            links['value'].append(0.000001)  # Arbitrary value for dummy links
-            links['color'].append(background_color)
-            links['label'].append('')
-            links['hovercolor'].append(links['color'][-1])
+        if dummy_tf not in nodes:
+            nodes.append(dummy_tf)
+            nodes.append(dummy_direction)
+            nodes.append(dummy_time)
+            node_indices[dummy_tf] = len(node_indices)
+            node_indices[dummy_direction] = len(node_indices)
+            node_indices[dummy_time] = len(node_indices)
+            node_colors.append(background_color)
+            node_colors.append(background_color)
+            node_colors.append(background_color)
 
-            links['source'].append(node_indices[dummy_time])
-            links['target'].append(node_indices[dummy_direction])
-            links['value'].append(0.000001)
-            links['color'].append(background_color)
-            links['label'].append('')
-            links['hovercolor'].append(links['color'][-1])
+        links['source'].append(node_indices[gene])
+        links['target'].append(node_indices[dummy_time])
+        links['value'].append(0.000001)  # Arbitrary value for dummy links
+        links['color'].append(background_color)
+        links['label'].append('')
+        links['hovercolor'].append(links['color'][-1])
 
-            links['source'].append(node_indices[dummy_direction])
-            links['target'].append(node_indices[dummy_tf])
-            links['value'].append(0.000001)
-            links['color'].append(background_color)
-            links['label'].append('')
-            links['hovercolor'].append(links['color'][-1])
+        links['source'].append(node_indices[dummy_time])
+        links['target'].append(node_indices[dummy_direction])
+        links['value'].append(0.000001)
+        links['color'].append(background_color)
+        links['label'].append('')
+        links['hovercolor'].append(links['color'][-1])
 
-        # Add dummy nodes and links for unconnected right genes
-        for gene in unconnected_right_genes:
-            dummy_tf = '    '
-            dummy_direction = '     '
-            dummy_time = '      '
+        links['source'].append(node_indices[dummy_direction])
+        links['target'].append(node_indices[dummy_tf])
+        links['value'].append(0.000001)
+        links['color'].append(background_color)
+        links['label'].append('')
+        links['hovercolor'].append(links['color'][-1])
 
-            if dummy_tf not in nodes:
-                nodes.append(dummy_tf)
-                nodes.append(dummy_direction)
-                nodes.append(dummy_time)
-                node_indices[dummy_tf] = len(node_indices)
-                node_indices[dummy_direction] = len(node_indices)
-                node_indices[dummy_time] = len(node_indices)
-                node_colors.append(background_color)
-                node_colors.append(background_color)
-                node_colors.append(background_color)
+    for gene in unconnected_right_genes:
+        dummy_tf = '    '
+        dummy_direction = '     '
+        dummy_time = '      '
 
-            links['source'].append(node_indices[dummy_tf])
-            links['target'].append(node_indices[dummy_direction])
-            links['value'].append(0.000001)
-            links['color'].append(background_color)
-            links['label'].append('')
-            links['hovercolor'].append(links['color'][-1])
+        if dummy_tf not in nodes:
+            nodes.append(dummy_tf)
+            nodes.append(dummy_direction)
+            nodes.append(dummy_time)
+            node_indices[dummy_tf] = len(node_indices)
+            node_indices[dummy_direction] = len(node_indices)
+            node_indices[dummy_time] = len(node_indices)
+            node_colors.append(background_color)
+            node_colors.append(background_color)
+            node_colors.append(background_color)
 
-            links['source'].append(node_indices[dummy_direction])
-            links['target'].append(node_indices[dummy_time])
-            links['value'].append(0.000001)
-            links['color'].append(background_color)
-            links['label'].append('')
-            links['hovercolor'].append(links['color'][-1])
+        links['source'].append(node_indices[dummy_tf])
+        links['target'].append(node_indices[dummy_direction])
+        links['value'].append(0.000001)
+        links['color'].append(background_color)
+        links['label'].append('')
+        links['hovercolor'].append(links['color'][-1])
 
-            links['source'].append(node_indices[dummy_time])
-            links['target'].append(node_indices[gene])
-            links['value'].append(0.000001)
-            links['color'].append(background_color)
-            links['label'].append('')
-            links['hovercolor'].append(links['color'][-1])
+        links['source'].append(node_indices[dummy_direction])
+        links['target'].append(node_indices[dummy_time])
+        links['value'].append(0.000001)
+        links['color'].append(background_color)
+        links['label'].append('')
+        links['hovercolor'].append(links['color'][-1])
 
-        for _, row in right_df_summary.iterrows():
-            tf_motif = row['TF_motif']
-            direction = f"{tf_motif}_{row['direction']}"
-            time = f"{direction}_{row['time']}"
-            gene = row['gene']
-            peak = row['peak']
-            score = row['score']
+        links['source'].append(node_indices[dummy_time])
+        links['target'].append(node_indices[gene])
+        links['value'].append(0.000001)
+        links['color'].append(background_color)
+        links['label'].append('')
+        links['hovercolor'].append(links['color'][-1])
 
-            if gene in node_indices:
-                links['source'].append(node_indices[gene])
-                links['target'].append(node_indices[time])
-                links['value'].append(score)
-                blended_color = blend_colors(tf_motif_colors[tf_motif.strip()], time_colors[str(row['time'])])
-                links['color'].append(blended_color)
-                links['label'].append('peak: ' + peak)
-                links['hovercolor'].append("mediumturquoise")
-                
-
-                links['source'].append(node_indices[time])
-                links['target'].append(node_indices[direction])
-                links['value'].append(score)
-                links['color'].append("rgba" + str(color_palette.get(tf_motif.strip(), (0, 0, 0, 0.4))))
-                links['label'].append('')
-                links['hovercolor'].append(links['color'][-1])
-
-                links['source'].append(node_indices[direction])
-                links['target'].append(node_indices[tf_motif])
-                links['value'].append(score)
-                links['color'].append("rgba" + str(color_palette.get(tf_motif.strip(), (0, 0, 0, 0.4))))
-                links['label'].append('')
-                links['hovercolor'].append(links['color'][-1])
-
-    
-    fig = go.Figure(data=[go.Sankey(
+def create_sankey_figure(nodes, links, node_colors):
+    return go.Figure(data=[go.Sankey(
         node=dict(
             pad=15,
             thickness=20,
@@ -487,14 +485,13 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
         )
     )])
 
-    # Density Plot with Rug Plot
+def create_distance_density_plot(filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data):
     if not filtered_data.empty:
         try:
             background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + (right_tf_motif_filter or [""]))].drop_duplicates("peak")['distance']
             filtered_distances = filtered_data['distance']
             rug_text = [(filtered_data['gene'] + "  " + filtered_data['peak']).tolist(), None]
 
-            # Perform Kolmogorov-Smirnov test
             _, p_value = ks_2samp(filtered_distances, background_distances)
             p_value_text = f'p-value: {p_value:.2e}'
 
@@ -503,7 +500,6 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
                 bin_size=10000, rug_text=rug_text, colors=['rgb(0, 0, 255)', 'rgba(200, 200, 200, 0.6)'])
             fig_density.update_xaxes(range=[-200000, 200000])
             fig_density.add_vline(x=0, line_width=2, line_dash="dash", line_color="black", annotation_text="TSS", annotation_position="top right")
-            # Adjust the layout to reduce the height of the rug plot
             fig_density.update_layout(
                 height=800,
                 margin=dict(t=50, b=50, l=50, r=50),
@@ -530,7 +526,9 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
             fig_density = go.Figure()
     else:
         fig_density = go.Figure()
-    # Perform GO enrichment analysis using gseapy
+    return fig_density
+
+def create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choice, left_tf_motif_filter, right_tf_motif_filter, data):
     if gene_set_filter:
         try:
             background_genes = data.drop_duplicates("gene")['gene'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + (right_tf_motif_filter or [""]))].drop_duplicates("gene")['gene']
@@ -577,9 +575,7 @@ def update_sankey(left_tf_motif_filter, left_direction_filter, left_time_filter,
             go_fig = go.Figure()
     else:
         go_fig = go.Figure()
-
-    return fig, fig_density, go_fig
-
+    return go_fig
 
 # Run the app
 if __name__ == '__main__':
