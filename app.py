@@ -59,109 +59,167 @@ app.layout = html.Div([
         ], style={'width': '80%', 'display': 'inline-block', 'verticalAlign': 'middle'})
     ], style={'width': '100%', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '20px 0', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #dee2e6'}),
     html.H1("TF Explorer"),
-    html.Div([
-        html.Div([
-            html.Label("Select left TF_motif:"),
-            dcc.Dropdown(
-                id='left_tf_motif_filter',
-                options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
-                multi=True
-            ),
-            html.Label("Select Direction:"),
-            dcc.Dropdown(
-                id='left_direction_filter',
-                options=[],
-                multi=True,
-                value=['pos', 'neg']
-            ),
-            html.Label("Select Time:"),
-            dcc.Dropdown(
-                id='left_time_filter',
-                options=[],
-                multi=True,
-                disabled=True
-            ),
-        ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-        html.Div([
-            html.Label("Select right TF_motif:"),
-            dcc.Dropdown(
-                id='right_tf_motif_filter',
-                options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
-                multi=True
-            ),
-            html.Label("Select Direction:"),
-            dcc.Dropdown(
-                id='right_direction_filter',
-                options=[],
-                multi=True,
-                value=['pos', 'neg']
-            ),
-            html.Label("Select Time:"),
-            dcc.Dropdown(
-                id='right_time_filter',
-                options=[],
-                multi=True,
-                disabled=True
-            ),
-            html.Label("Select right and left join mode:"),
-            dcc.RadioItems(
-                id='join_type',
-                options=['inner', 'outer'],
-                value='outer',
-                inline=True),
-        ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-    ], style={'width': '80%', 'margin': '0 auto', 'display': 'flex', 'justifyContent': 'space-between'}),
-    html.Div([
-        html.Label("Minimum Score Threshold:"),
-        dcc.Slider(
-            id='score_threshold',
-            min=0,
-            max=round(data['score'].abs().max(), 1),
-            step=0.1,
-            value=0,
-            tooltip={"placement": "bottom", "always_visible": True}
-        ),
-    ], style={'width': '50%', 'margin': '10px auto'}),
-    dcc.Graph(
-        id='sankey_diagram',
-        style={'height': '100vh', 'width': '100vw'}  # Adjust these values as needed
-    ),
-    html.Div([
-        html.Label("Background:"),
-        dcc.RadioItems(
-            id='background_choice',
-            options=[
-                {'label': 'All', 'value': 'all'},
-                {'label': 'Filtered by TF', 'value': 'filtered'}
-            ],
-            value='all',
-            inline=True
-        )
-    ], style={'width': '80%', 'margin': '20px auto', 'display': 'flex', 'justifyContent': 'center'}),
-    html.Div([
-        dcc.Graph(
-            id='distance_density_plot',
-            style={'height': '80vh', 'width': '40vw', 'display': 'inline-block'}  # Adjust these values as needed
-        ),
-        html.Div([
-            html.Label("Select Gene Set:"),
-            dcc.Dropdown(
-                id='gene_set_filter',
-                style={'width': '20vw'},
-                options=[
-                    {'label': 'GO Molecular Function 2015', 'value': 'GO_Molecular_Function_2015'},
-                    {'label': 'GO Cellular Component 2015', 'value': 'GO_Cellular_Component_2015'},
-                    {'label': 'GO Biological Process 2015', 'value': 'GO_Biological_Process_2015'}
-                ],
-                multi=False
-            ),
+    dcc.Tabs([
+        dcc.Tab(label='Transcription Factor', children=[
+            html.Div([
+                html.Div([
+                    html.Label("Select left TF_motif:"),
+                    dcc.Dropdown(
+                        id='left_tf_motif_filter',
+                        options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
+                        multi=True
+                    ),
+                    html.Label("Select Direction:"),
+                    dcc.Dropdown(
+                        id='left_direction_filter',
+                        options=[],
+                        multi=True,
+                        value=['pos', 'neg']
+                    ),
+                    html.Label("Select Time:"),
+                    dcc.Dropdown(
+                        id='left_time_filter',
+                        options=[],
+                        multi=True,
+                        disabled=True
+                    ),
+                ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                html.Div([
+                    html.Label("Select right TF_motif:"),
+                    dcc.Dropdown(
+                        id='right_tf_motif_filter',
+                        options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
+                        multi=True
+                    ),
+                    html.Label("Select Direction:"),
+                    dcc.Dropdown(
+                        id='right_direction_filter',
+                        options=[],
+                        multi=True,
+                        value=['pos', 'neg']
+                    ),
+                    html.Label("Select Time:"),
+                    dcc.Dropdown(
+                        id='right_time_filter',
+                        options=[],
+                        multi=True,
+                        disabled=True
+                    ),
+                    html.Label("Select right and left join mode:"),
+                    dcc.RadioItems(
+                        id='join_type',
+                        options=['inner', 'outer'],
+                        value='outer',
+                        inline=True),
+                ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+            ], style={'width': '80%', 'margin': '0 auto', 'display': 'flex', 'justifyContent': 'space-between'}),
+            html.Div([
+                html.Label("Minimum Score Threshold:"),
+                dcc.Slider(
+                    id='score_threshold',
+                    min=0,
+                    max=round(data['score'].abs().max(), 1),
+                    step=0.1,
+                    value=0,
+                    tooltip={"placement": "bottom", "always_visible": True}
+                ),
+            ], style={'width': '50%', 'margin': '10px auto'}),
             dcc.Graph(
-                id='go_enrichment_plot',
-                style={'height': '70vh', 'width': '50vw'}  # Adjust these values as needed
+                id='sankey_diagram',
+                style={'height': '100vh', 'width': '100vw'}  # Adjust these values as needed
+            ),
+            html.Div([
+                html.Label("Background:"),
+                dcc.RadioItems(
+                    id='background_choice',
+                    options=[
+                        {'label': 'All', 'value': 'all'},
+                        {'label': 'Filtered by TF', 'value': 'filtered'}
+                    ],
+                    value='all',
+                    inline=True
+                )
+            ], style={'width': '80%', 'margin': '20px auto', 'display': 'flex', 'justifyContent': 'center'}),
+            html.Div([
+                dcc.Graph(
+                    id='distance_density_plot',
+                    style={'height': '80vh', 'width': '40vw', 'display': 'inline-block'}  # Adjust these values as needed
+                ),
+                html.Div([
+                    html.Label("Select Gene Set:"),
+                    dcc.Dropdown(
+                        id='gene_set_filter',
+                        style={'width': '20vw'},
+                        options=[
+                            {'label': 'GO Molecular Function 2015', 'value': 'GO_Molecular_Function_2015'},
+                            {'label': 'GO Cellular Component 2015', 'value': 'GO_Cellular_Component_2015'},
+                            {'label': 'GO Biological Process 2015', 'value': 'GO_Biological_Process_2015'}
+                        ],
+                        multi=False
+                    ),
+                    dcc.Graph(
+                        id='go_enrichment_plot',
+                        style={'height': '70vh', 'width': '50vw'}  # Adjust these values as needed
+                    )
+                ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'justifyContent': 'space-around'})
+            ], style={'display': 'flex', 'flexDirection': 'row', 'alignItems': 'center', 'justifyContent': 'space-around'})
+        ]),
+        dcc.Tab(label='Gene', children=[
+            html.Div([
+                html.Label("Select Gene:"),
+                dcc.Dropdown(
+                    id='tabG_gene_filter',
+                    options=[{'label': gene, 'value': gene} for gene in data['gene'].unique()],
+                    multi=True
+                ),
+                html.Label("Select Direction:"),
+                dcc.Dropdown(
+                    id='tabG_direction_filter',
+                    options=[],
+                    multi=True,
+                    value=['pos', 'neg']
+                ),
+                html.Label("Select Time:"),
+                dcc.Dropdown(
+                    id='tabG_time_filter',
+                    options=[],
+                    multi=True,
+                    disabled=True
+                ),
+                html.Label("Minimum Score Threshold:"),
+                dcc.Slider(
+                    id='tabG_score_threshold',
+                    min=0,
+                    max=round(data['score'].abs().max(), 1),
+                    step=0.1,
+                    value=0,
+                    tooltip={"placement": "bottom", "always_visible": True}
+                ),
+            ], style={'width': '50%', 'margin': '10px auto'}),
+            dcc.Graph(
+                id='tabG_sankey_diagram',
+                style={'height': '100vh', 'width': '100vw'}  # Adjust these values as needed
+            ),
+            html.Div([
+                html.Label("Background:"),
+                dcc.RadioItems(
+                    id='tabG_background_choice',
+                    options=[
+                        {'label': 'All', 'value': 'all'},
+                        {'label': 'Filtered by TF', 'value': 'filtered'}
+                    ],
+                    value='all',
+                    inline=True
+                )
+            ], style={'width': '80%', 'margin': '20px auto', 'display': 'flex', 'justifyContent': 'center'}),
+            dcc.Graph(
+                id='tabG_distance_density_plot',
+                style={'height': '50vh', 'width': '100vw', 'display': 'inline-block'}  # Adjust these values as needed
             )
-        ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'justifyContent': 'space-around'})
-    ], style={'display': 'flex', 'flexDirection': 'row', 'alignItems': 'center', 'justifyContent': 'space-around'})
+        ])
+    ])
 ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center'})
+
 
 # Helper function to blend TF_motif color with time greyscale
 def blend_colors(tf_color, time_color, alpha=0.7):
@@ -231,6 +289,38 @@ def update_right_time_filter(selected_tf_motifs, selected_directions):
 
     return times, False
 
+# Callbacks to update Gene filters based on selected TF_motifs and directions
+
+@app.callback(
+    [Output('tabG_direction_filter', 'options'),
+     Output('tabG_direction_filter', 'value'),
+     Output('tabG_direction_filter', 'disabled')],
+    [Input('tabG_gene_filter', 'value')]
+)
+def update_tabG_direction_filter(selected_genes):
+    if not selected_genes:
+        return [], ['pos', 'neg'], True
+
+    filtered_data = data[data['gene'].isin(selected_genes)]
+    directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
+
+    return directions, ['pos', 'neg'], False
+
+@app.callback(
+    [Output('tabG_time_filter', 'options'),
+     Output('tabG_time_filter', 'disabled')],
+    [Input('tabG_gene_filter', 'value'),
+     Input('tabG_direction_filter', 'value')]
+)
+def update_tabG_time_filter(selected_genes, selected_directions):
+    if not selected_genes or not selected_directions:
+        return [], True
+
+    filtered_data = data[(data['gene'].isin(selected_genes)) & (data['direction'].isin(selected_directions))]
+    times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
+
+    return times, False
+
 # Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
 @app.callback(
     [Output('sankey_diagram', 'figure'),
@@ -280,23 +370,6 @@ def update_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter,
 
     df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
     df_summary['score'] = df_summary['score'].abs()
-
-    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary, right_tf_motif_filter, gene_join_filter, score_threshold, left_direction_filter, left_time_filter, right_direction_filter, right_time_filter, join_type, tf_motif_colors, time_colors, background_color, color_palette)
-
-    sankey_fig = create_sankey_figure(nodes, links, node_colors)
-    distance_density_fig = create_distance_density_plot(filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
-    go_enrichment_fig = create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
-
-    return sankey_fig, distance_density_fig, go_enrichment_fig
-
-def generate_sankey_nodes_and_links(df_summary, right_tf_motif_filter, gene_join_filter, score_threshold, left_direction_filter, left_time_filter, right_direction_filter, right_time_filter, join_type, tf_motif_colors, time_colors, background_color, color_palette):
-    nodes = list(pd.concat([
-        df_summary['TF_motif'],
-        df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1),
-        df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}_{x['time']}", axis=1),
-        df_summary['gene']
-    ]).unique())
-
     if right_tf_motif_filter:
         right_filtered_data = data[data['TF_motif'].isin(right_tf_motif_filter) &
                                    data['gene'].isin(gene_join_filter) &
@@ -305,7 +378,65 @@ def generate_sankey_nodes_and_links(df_summary, right_tf_motif_filter, gene_join
                                         data['time'].isin(right_time_filter)].assign(TF_motif = lambda x: " " + x["TF_motif"])
         right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak', 'gene']).agg({'score': 'sum'}).reset_index()
         right_df_summary['score'] = right_df_summary['score'].abs()
+    else :
+        right_df_summary = None
 
+    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette)
+
+    sankey_fig = create_sankey_figure(nodes, links, node_colors)
+    distance_density_fig = create_distance_density_plot(filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+    go_enrichment_fig = create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+
+    return sankey_fig, distance_density_fig, go_enrichment_fig
+
+# Main callback to update the Sankey diagram and distance density plot for Gene tab
+@app.callback(
+    [Output('tabG_sankey_diagram', 'figure'),
+     Output('tabG_distance_density_plot', 'figure')],
+    [Input('tabG_gene_filter', 'value'),
+     Input('tabG_direction_filter', 'value'),
+     Input('tabG_time_filter', 'value'),
+     Input('tabG_score_threshold', 'value'),
+     Input('tabG_background_choice', 'value')]
+)
+def update_gene_tab_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter, score_threshold, background_choice):
+    if not tabG_gene_filter:
+        return go.Figure(), go.Figure()  # Return empty figures if no gene is selected
+
+    tabG_direction_filter = tabG_direction_filter if tabG_direction_filter else ["pos", "neg"]
+    tabG_time_filter = tabG_time_filter if tabG_time_filter else [0,1,2,3,4,5,6,7,8,9]
+
+    filtered_data = data[data['gene'].isin(tabG_gene_filter) &
+                          (data['score'].abs() >= score_threshold) &
+                          (data['direction'].isin(tabG_direction_filter)) &
+                          (data['time'].isin(tabG_time_filter))]
+
+    df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
+    df_summary['score'] = df_summary['score'].abs()
+
+    filterd_TF_motf = df_summary['TF_motif'].unique().tolist()
+    left_filterd_TF_motf = filterd_TF_motf[:int(len(filterd_TF_motf)/2)]
+    right_filterd_TF_motf = filterd_TF_motf[int(len(filterd_TF_motf)/2):]
+
+    df_summary_left = df_summary[df_summary["TF_motif"].isin(left_filterd_TF_motf)]
+    df_summary_right = df_summary[df_summary["TF_motif"].isin(right_filterd_TF_motf)]
+
+    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary_left, df_summary_right, True, tf_motif_colors, time_colors, background_color, color_palette)
+
+    sankey_fig = create_sankey_figure(nodes, links, node_colors)
+    distance_density_fig = create_distance_density_plot(filtered_data, background_choice, left_filterd_TF_motf, right_filterd_TF_motf, data)
+
+    return sankey_fig, distance_density_fig
+
+def generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette):
+    nodes = list(pd.concat([
+        df_summary['TF_motif'],
+        df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1),
+        df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}_{x['time']}", axis=1),
+        df_summary['gene']
+    ]).unique())
+
+    if right_tf_motif_filter:
         nodes += list(pd.concat([
             right_df_summary['TF_motif'],
             right_df_summary.apply(lambda x: f"{x['TF_motif']}_{x['direction']}", axis=1),
@@ -329,6 +460,8 @@ def generate_sankey_nodes_and_links(df_summary, right_tf_motif_filter, gene_join
         links = create_sankey_links(right_df_summary, node_indices, tf_motif_colors, time_colors, color_palette, links, left= False)
     
     return nodes, node_indices, links, node_colors
+
+
 
 def create_sankey_links(df_summary, node_indices, tf_motif_colors, time_colors, color_palette, links, left = True):
     if links is None:
