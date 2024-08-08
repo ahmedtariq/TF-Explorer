@@ -170,7 +170,8 @@ app.layout = html.Div([
                 dcc.Dropdown(
                     id='tabG_gene_filter',
                     options=[{'label': gene, 'value': gene} for gene in data['gene'].unique()],
-                    multi=True
+                    multi=True,
+                    value=[]
                 ),
                 html.Label("Select Direction:"),
                 dcc.Dropdown(
@@ -320,6 +321,30 @@ def update_tabG_time_filter(selected_genes, selected_directions):
     times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
 
     return times, False
+
+# Callback to update the Gene filter in the Gene tab based on clicks on the Sankey diagram
+@app.callback(
+    Output('tabG_gene_filter', 'value'),
+    [Input('sankey_diagram', 'clickData')],
+    [State('tabG_gene_filter', 'value')]
+)
+def update_gene_filter_from_sankey(clickData, current_genes):
+    if clickData is None:
+        return current_genes
+
+    clicked_node = clickData['points'][0]['label']
+    if ' ' in clicked_node:  # This condition may need to be adapted based on your node labels
+        return current_genes  # Not a gene node, return current filter without changes
+
+    # If clicked_node is a gene, update the gene filter
+    if current_genes is None:
+        current_genes = []
+
+    if clicked_node not in current_genes:
+        current_genes.append(clicked_node)
+
+    return current_genes
+
 
 # Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
 @app.callback(
@@ -615,15 +640,16 @@ def create_sankey_figure(nodes, links, node_colors):
             color=links['color'],
             label=links['label'],
             hovercolor=links['hovercolor']
-        )
+        ),
+        arrangement='fixed'
     )])
 
 def create_distance_density_plot(filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data):
     if not filtered_data.empty:
         try:
             background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + (right_tf_motif_filter or [""]))].drop_duplicates("peak")['distance']
-            filtered_distances = filtered_data['distance']
-            rug_text = [(filtered_data['gene'] + "  " + filtered_data['peak']).tolist(), None]
+            filtered_distances = filtered_data.drop_duplicates("peak")['distance']
+            rug_text = [(filtered_data.drop_duplicates("peak")['gene'] + "  " + filtered_data.drop_duplicates("peak")['peak']).tolist(), None]
 
             _, p_value = ks_2samp(filtered_distances, background_distances)
             p_value_text = f'p-value: {p_value:.2e}'
