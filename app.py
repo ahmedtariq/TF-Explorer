@@ -11,7 +11,7 @@ import gseapy as gp
 import os
 
 # Load the dataset
-file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap.csv')
+file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap_lag.csv')
 data = pd.read_csv(file_path)
 
 # Generate color palettes
