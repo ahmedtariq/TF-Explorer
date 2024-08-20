@@ -5,7 +5,7 @@ import plotly.figure_factory as ff
 import pandas as pd
 import seaborn as sns
 import numpy as np
-from scipy.stats import ks_2samp
+from scipy.stats import ks_2samp, ttest_ind
 import colorcet as cc
 import gseapy as gp
 import os
@@ -119,8 +119,9 @@ app.layout = html.Div([
                     id='score_threshold',
                     min=0,
                     max=round(data['score'].abs().max(), 1),
-                    step=0.1,
-                    value=0,
+                    step = 0.1,
+                    value = 0,
+                    marks = {(i+0.00001)/10: {"label" : str(round((i+0.00001)/10,1))}for i in range(0,200,5) if i/10 < data['score'].abs().max()},
                     tooltip={"placement": "bottom", "always_visible": True}
                 ),
             ], style={'width': '50%', 'margin': '10px auto'}),
@@ -162,7 +163,11 @@ app.layout = html.Div([
                         style={'height': '70vh', 'width': '50vw'}  # Adjust these values as needed
                     )
                 ], style={'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'justifyContent': 'space-around'})
-            ], style={'display': 'flex', 'flexDirection': 'row', 'alignItems': 'center', 'justifyContent': 'space-around'})
+            ], style={'display': 'flex', 'flexDirection': 'row', 'alignItems': 'center', 'justifyContent': 'space-around'}),
+            dcc.Graph(
+                id='dist_lag_violin_plot',
+                style={'height': '60vh', 'width': '100vw'}  # Adjust the height as needed
+            )
         ]),
         dcc.Tab(label='Gene', children=[
             html.Div([
@@ -350,7 +355,8 @@ def update_gene_filter_from_sankey(clickData, current_genes):
 @app.callback(
     [Output('sankey_diagram', 'figure'),
      Output('distance_density_plot', 'figure'),
-     Output('go_enrichment_plot', 'figure')],
+     Output('go_enrichment_plot', 'figure'),
+     Output('dist_lag_violin_plot', 'figure')],
     [Input('left_tf_motif_filter', 'value'),
      Input('left_direction_filter', 'value'),
      Input('left_time_filter', 'value'),
@@ -364,7 +370,7 @@ def update_gene_filter_from_sankey(clickData, current_genes):
 )
 def update_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter, background_choice):
     if not left_tf_motif_filter:
-        return go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
+        return go.Figure(), go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
     left_direction_filter = left_direction_filter if left_direction_filter else ["pos", "neg"]
     left_time_filter = left_time_filter if left_time_filter else [0,1,2,3,4,5,6,7,8,9]
@@ -392,7 +398,7 @@ def update_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter,
                           (data['score'].abs() >= score_threshold) &
                           (data['direction'].isin(left_direction_filter)) &
                           (data['time'].isin(left_time_filter))]
-
+    
     df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
     df_summary['score'] = df_summary['score'].abs()
     if right_tf_motif_filter:
@@ -404,15 +410,17 @@ def update_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter,
         right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak', 'gene']).agg({'score': 'sum'}).reset_index()
         right_df_summary['score'] = right_df_summary['score'].abs()
     else :
+        right_filtered_data = pd.DataFrame(columns=filtered_data.columns)
         right_df_summary = None
 
     nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette)
 
     sankey_fig = create_sankey_figure(nodes, links, node_colors)
-    distance_density_fig = create_distance_density_plot(filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+    distance_density_fig = create_distance_density_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
     go_enrichment_fig = create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+    dist_lag_fig = create_dist_lag_violin_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
 
-    return sankey_fig, distance_density_fig, go_enrichment_fig
+    return sankey_fig, distance_density_fig, go_enrichment_fig, dist_lag_fig
 
 # Main callback to update the Sankey diagram and distance density plot for Gene tab
 @app.callback(
@@ -644,19 +652,29 @@ def create_sankey_figure(nodes, links, node_colors):
         arrangement='fixed'
     )])
 
-def create_distance_density_plot(filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data):
+def create_distance_density_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data):
     if not filtered_data.empty:
         try:
             background_distances = data.drop_duplicates("peak")['distance'] if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + (right_tf_motif_filter or [""]))].drop_duplicates("peak")['distance']
             filtered_distances = filtered_data.drop_duplicates("peak")['distance']
-            rug_text = [(filtered_data.drop_duplicates("peak")['gene'] + "  " + filtered_data.drop_duplicates("peak")['peak']).tolist(), None]
+            right_filtered_distances = right_filtered_data.drop_duplicates("peak")['distance']
+            rug_text = (filtered_data.drop_duplicates("peak")['gene'] + "  " + filtered_data.drop_duplicates("peak")['peak']).tolist()
+            right_rug_text = (right_filtered_data.drop_duplicates("peak")['gene'] + "  " + right_filtered_data.drop_duplicates("peak")['peak']).tolist()
 
-            _, p_value = ks_2samp(filtered_distances, background_distances)
-            p_value_text = f'p-value: {p_value:.2e}'
+            _, l_p_value = ks_2samp(filtered_distances, background_distances)
+            left_p_value_text = "<b>*</b>" if l_p_value < 0.05 else "<b>ns</b>"
 
-            fig_density = ff.create_distplot(
-                [filtered_distances, background_distances], ['Filtered Peaks', 'Background'],
-                bin_size=10000, rug_text=rug_text, colors=['rgb(0, 0, 255)', 'rgba(200, 200, 200, 0.6)'])
+            if not right_filtered_data.empty:
+                _, r_p_value = ks_2samp(right_filtered_distances, background_distances)
+                right_p_value_text = "<b>*</b>" if r_p_value < 0.05 else "<b>ns</b>"
+
+                fig_density = ff.create_distplot(
+                    [filtered_distances, right_filtered_distances, background_distances], ['Left Filtered Peaks ' + left_p_value_text, 'Right Filtered Peaks ' + right_p_value_text, 'Background'],
+                    bin_size=10000, rug_text=[rug_text, right_rug_text, None], colors=['rgba(0, 0, 255, 0.8)', 'rgb(0, 255, 0, 0.8)', 'rgba(200, 200, 200, 0.6)'])
+            else:
+                fig_density = ff.create_distplot(
+                    [filtered_distances, background_distances], ['Left Filtered Peaks ' + left_p_value_text, 'Background'],
+                    bin_size=10000, rug_text=[rug_text, None], colors=['rgba(0, 0, 255,0.8)',  'rgba(200, 200, 200, 0.6)'])
             fig_density.update_xaxes(range=[-200000, 200000])
             fig_density.add_vline(x=0, line_width=2, line_dash="dash", line_color="black", annotation_text="TSS", annotation_position="top right")
             fig_density.update_layout(
@@ -667,18 +685,7 @@ def create_distance_density_plot(filtered_data, background_choice, left_tf_motif
                 ),
                 yaxis=dict(
                     domain=[0.15, 1]
-                ),
-                annotations=[dict(
-                    xref='paper', yref='paper',
-                    x=0.75, y=0.99,
-                    text=p_value_text,
-                    showarrow=False,
-                    font=dict(
-                        size=14,
-                        color="black"
-                    ),
-                    align="right"
-                )]
+                )
             )
         except Exception as e:
             print(f"Error performing distance analysis: {e}")
@@ -735,6 +742,74 @@ def create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choi
     else:
         go_fig = go.Figure()
     return go_fig
+
+def create_dist_lag_violin_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data):
+    if not filtered_data.empty:
+        try:
+
+            # Assuming data and filtered_data are pandas DataFrames
+
+            fig_dist_lag = go.Figure()
+
+            data = data.sort_values(by="time")  if background_choice == "all" else data[data["TF_motif"].isin(left_tf_motif_filter + (right_tf_motif_filter or [""]))].sort_values(by="time")
+            filtered_data = pd.concat([filtered_data, right_filtered_data],axis=0).sort_values(by="time") if not right_filtered_data.empty else filtered_data.sort_values(by="time")
+
+            fig_dist_lag.add_trace(go.Violin(x=filtered_data['time'].astype(str),
+                                    y=filtered_data['mean_lag'],
+                                    legendgroup='Filtered', scalegroup='Filtered', name='Filtered',
+                                    side='negative',
+                                    pointpos=-0.5, # where to position points
+                                    line_color='lightseagreen')
+                    )
+            fig_dist_lag.add_trace(go.Violin(x=data['time'][data["time"].isin(pd.unique(filtered_data['time']))].astype(str),
+                                    y=data['mean_lag'][data["time"].isin(pd.unique(filtered_data['time']))],
+                                    legendgroup='Background', scalegroup='Background', name='Background',
+                                    side='positive',
+                                    pointpos=0.5,
+                                    line_color='mediumpurple')
+                    )
+
+            # Perform t-tests and add asterisks for significant differences
+            max_y_value = max(filtered_data['mean_lag'].max(), data['mean_lag'].max()) + 15
+
+            for x_index, time_point in enumerate(pd.unique(filtered_data['time'])):
+                filtered_lags = filtered_data['mean_lag'][filtered_data['time'] == time_point]
+                background_lags = data['mean_lag'][data['time'] == time_point]
+                
+                # Perform t-test
+                t_stat, p_value = ttest_ind(filtered_lags, background_lags, equal_var=False)
+                
+                # If significant, add the asterisk
+                # time_point = time_point if time_point != pd.unique(filtered_data['time'])[-1] else time_point -1
+                if (p_value < 0.05) & (p_value >= 0.01):
+                    fig_dist_lag.add_annotation(x=x_index, y=max_y_value,
+                                    text="*", showarrow=False,
+                                    font=dict(size=20, color="black")) 
+                elif p_value < 0.01:
+                    fig_dist_lag.add_annotation(x=x_index, y=max_y_value,
+                                    text="**", showarrow=False,
+                                    font=dict(size=20, color="black")) 
+                elif p_value >= 0.05 :
+                    fig_dist_lag.add_annotation(x=x_index, y=max_y_value,
+                                    text="ns", showarrow=False,
+                                    font=dict(size=20, color="black"))        
+
+            # Update layout for visibility
+            fig_dist_lag.update_traces(meanline_visible=True, box_visible=True,
+                            points='all', jitter=0.05)  # add some jitter on points for better visibility
+            fig_dist_lag.update_layout(
+                title_text="Mean Delay Distribution",
+                violingap=0, violingroupgap=0, violinmode='overlay'
+            )
+
+            return fig_dist_lag
+
+        except Exception as e:
+            print(f"Error performing mean lag analysis: {e}")
+            fig_dist_lag = go.Figure()
+    else:
+        fig_dist_lag = go.Figure()
+    return fig_dist_lag
 
 # Run the app
 if __name__ == '__main__':
