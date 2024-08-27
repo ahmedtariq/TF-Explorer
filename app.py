@@ -4,7 +4,11 @@ import plotly.graph_objects as go
 import plotly.figure_factory as ff
 import pandas as pd
 import seaborn as sns
+import matplotlib.pyplot as plt
 import numpy as np
+import igraph as ig
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
 from scipy.stats import ks_2samp, ttest_ind
 import colorcet as cc
 import gseapy as gp
@@ -13,6 +17,11 @@ import os
 # Load the dataset
 file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap_lag.csv')
 data = pd.read_csv(file_path)
+
+tfcluster = pd.read_csv("https://jaspar.elixir.no/static/clustering/2024/vertebrates/CORE/interactive_trees/clusters.tab", sep='\t')\
+.loc[:, ["cluster", "id", "name"]].assign(name = lambda x: x['name'].str.split(","))\
+.assign(id = lambda x: x['id'].str.split(",")).explode(['id','name']).reset_index(drop=True)\
+.assign(name = lambda x: x['name'].str.split("::",expand=True)[0].str.upper())
 
 # Generate color palettes
 def generate_color_palettes(data):
@@ -43,6 +52,7 @@ server = app.server
 
 # App layout
 app.layout = html.Div([
+    dcc.Store(id='stored_arules_df'),  # Store component to hold the buffered arules data
     html.Div([
         html.Div([
             html.A(
@@ -60,6 +70,34 @@ app.layout = html.Div([
     ], style={'width': '100%', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '20px 0', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #dee2e6'}),
     html.H1("TF Explorer"),
     dcc.Tabs([
+            dcc.Tab(label='TF Co-regulation', children=[
+                html.Div([
+                html.Label("Minimum Score Threshold:"),
+                dcc.Slider(
+                    id='tabCo_score_threshold',
+                    min=0.5,
+                    max=round(data['score'].abs().max(), 1),
+                    step=0.1,
+                    value=1,
+                    marks={(i+0.00001)/10: {"label": str(round((i+0.00001)/10, 1))} for i in range(0, 200, 5) if i/10 < data['score'].abs().max()},
+                    tooltip={"placement": "bottom", "always_visible": True}
+                ),
+                html.Label("Minimum Support Threshold:"),
+                dcc.Slider(
+                    id='tabCo_support_threshold',
+                    min=0.05,
+                    max=1,
+                    step=0.01,
+                    value=0.06,  # Default value for support threshold
+                    marks={i/100: {"label": str(i/100)} for i in range(0, 101, 10)},
+                    tooltip={"placement": "bottom", "always_visible": True}
+                ),
+            ], style={'width': '50%', 'margin': '10px auto'}),
+                dcc.Graph(
+                    id='tf_co_regulation_graph',
+                    style={'height': '100vh', 'width': '100vw'}  # Adjust as needed
+                )
+        ]),
         dcc.Tab(label='Transcription Factor', children=[
             html.Div([
                 html.Div([
@@ -350,6 +388,29 @@ def update_gene_filter_from_sankey(clickData, current_genes):
 
     return current_genes
 
+@app.callback(
+    Output('stored_arules_df', 'data'),
+    [Input('tabCo_score_threshold', 'value'),
+     Input('tabCo_support_threshold', 'value')]
+)
+def update_arules_data(tabCo_score_threshold, tabCo_support_threshold):
+    # Generate the association rules dataframe
+    allq_arules_df = make_arules(data, tabCo_score_threshold, tabCo_support_threshold)
+    
+    # Store the dataframe in a dictionary format to store in dcc.Store
+    return allq_arules_df.to_dict('records')
+
+@app.callback(
+    Output('tf_co_regulation_graph', 'figure'),
+    Input('stored_arules_df', 'data')  # Use the stored arules data as input
+)
+def update_tf_co_regulation_graph(stored_arules_df):
+    # Convert the stored data back to a DataFrame
+    allq_arules_df = pd.DataFrame(stored_arules_df)
+    
+    # Generate the graph using the existing logic
+    fig = generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df)
+    return fig
 
 # Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
 @app.callback(
@@ -460,6 +521,222 @@ def update_gene_tab_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_fi
     distance_density_fig = create_distance_density_plot(filtered_data, background_choice, left_filterd_TF_motf, right_filterd_TF_motf, data)
 
     return sankey_fig, distance_density_fig
+
+
+def make_arules(data, tabCo_score_threshold, tabCo_support_threshold):
+    data["TF_motif"] = data["TF_motif"].str.split('::',expand=True)[0].str.split('(',expand=True)[0].str.upper()
+    # Apply the score threshold filter
+    data = data[data["score"].abs() > tabCo_score_threshold]
+
+    # Start with your provided graph generation code
+    perGene_itemSet_df = data.assign(motif_direction_time = lambda x: x["TF_motif"] + "_"+x["direction"] + "_" + x["time"].astype(str)).\
+    groupby("gene")["motif_direction_time"].agg(list)
+
+    te = TransactionEncoder()
+    te_ary = te.fit(perGene_itemSet_df).transform(perGene_itemSet_df)
+    df = pd.DataFrame(te_ary, columns=te.columns_)
+    frequent_itemsets = apriori(df, min_support=tabCo_support_threshold, use_colnames=True)
+
+    perGene_ass_rules_df = association_rules(frequent_itemsets, metric="lift", min_threshold=1.5)
+
+    # Filter rules with 1 antecedents & 1 consequents
+    perGene_ass_rules_df["antecedents_len"] = perGene_ass_rules_df.apply(lambda x: len(x["antecedents"]),axis=1)
+    perGene_ass_rules_df["consequents_len"] = perGene_ass_rules_df.apply(lambda x: len(x["consequents"]),axis=1)
+    perGene_ass_rules_df = perGene_ass_rules_df.query("antecedents_len == 1 & consequents_len == 1").sort_values(by="lift", ascending= False)
+
+    # Transforming rules to string
+    perGene_ass_rules_df['antecedents'] = perGene_ass_rules_df['antecedents'].apply(lambda x: ''.join(x))
+    perGene_ass_rules_df['consequents'] = perGene_ass_rules_df['consequents'].apply(lambda x: ''.join(x))
+
+    # Function to identify if a row should be removed
+    def should_remove(row, df):
+        # Find potential matching rows
+        matches = df[(df['antecedents'].astype(str) == row['consequents']) & (df['consequents'] == row['antecedents'])]
+        
+        # If matches are found and confidence of the current row is lower than the matched row
+        if not matches.empty:
+            if row['confidence'] < matches['confidence'].max():
+                return True
+        return False
+
+    # Removing duplicate rules because of direction
+    perGene_ass_rules_df = perGene_ass_rules_df.loc[~perGene_ass_rules_df.apply(should_remove, axis=1, args=(perGene_ass_rules_df,)),:]
+
+    # Extracting info from rules
+    perGene_ass_rules_df = perGene_ass_rules_df.assign(antecedents_TF_motif = lambda x: x["antecedents"].str.split("_",expand=True)[0] )\
+    .assign(antecedents_dir = lambda x: x["antecedents"].str.split("_",expand=True)[1])\
+    .assign(antecedents_time = lambda x: x["antecedents"].str.split("_",expand=True)[2])\
+    .assign(consequents_TF_motif = lambda x: x["consequents"].str.split("_",expand=True)[0])\
+    .assign(consequents_dir = lambda x: x["consequents"].str.split("_",expand=True)[1])\
+    .assign(consequents_time = lambda x: x["consequents"].str.split("_",expand=True)[2])
+
+    def calc_jaccard_apply(x):
+        peak_ant = data.loc[(data["TF_motif"] == x["antecedents_TF_motif"])  & (data["time"] == int(x["antecedents_time"])),"peak"].drop_duplicates()
+        peak_con = data.loc[(data["TF_motif"] == x["consequents_TF_motif"]) & (data["time"] == int(x["consequents_time"])) ,"peak"].drop_duplicates()
+        intersection = peak_ant.isin(peak_con).sum()
+        union = pd.concat([peak_ant,peak_con],axis=0).nunique()
+        return intersection/union
+
+    perGene_ass_rules_df["TF_peak_jaccard"] = perGene_ass_rules_df.apply(calc_jaccard_apply,axis=1)
+    
+    return perGene_ass_rules_df
+
+
+def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df):
+
+    data["TF_motif"] = data["TF_motif"].str.split('::',expand=True)[0].str.split('(',expand=True)[0].str.upper()
+
+    # Generate the igraph network visualization 
+    # Note: We will create the plot and return it
+    def fade_to_white(x,start_r = 0, start_g = 150 , start_b = 0 , alpha = 0.6):
+        # Ensure x is between 0 and 1
+        x = max(0, min(1, x))
+        x = 1 - x
+        
+        
+        # Ending color (rgba(255, 255, 255, 1))
+        end_r = 255
+        end_g = 255
+        end_b = 255
+        
+        # Interpolate each channel
+        r = int(start_r + (end_r - start_r) * x)
+        g = int(start_g + (end_g - start_g) * x)
+        b = int(start_b + (end_b - start_b) * x)
+        a = alpha
+        
+        return f'rgba({r},{g},{b},{a})'
+
+    # arules data provided by mlxtend
+    df = allq_arules_df.query("confidence < 1.1").loc[:,["antecedents","antecedents_TF_motif", "antecedents_dir", "antecedents_time", "consequents","consequents_TF_motif",
+                                "consequents_dir", "consequents_time", "antecedent support", "consequent support", "support",
+                                "confidence", "lift", "TF_peak_jaccard" ]]
+
+    # node cluster info
+    node_cluster_df = pd.merge(pd.concat([df["antecedents_TF_motif"],df["consequents_TF_motif"]],axis=0).drop_duplicates().reset_index(drop=True).rename("TF_motif").to_frame(),
+            tfcluster[["cluster", "name"]], left_on="TF_motif", right_on="name", how="left").drop("name",axis=1)
+    node_cluster_df['cluster'] = node_cluster_df['cluster'].fillna('no_cluster')
+
+    # Generate a list of colors for cluster
+    unique_clusters = node_cluster_df["cluster"].unique()
+    colors = plt.cm.get_cmap('tab20', len(unique_clusters)).colors  # You can choose other colormaps
+    cluster_color_map = {cluster: f'rgba({color[0]*255},{color[1]*255},{color[2]*255},0.9)' for cluster, color in zip(unique_clusters, colors)}
+    cluster_color_map["no_cluster"] = 'rgba(0,0,0,0.9)'
+
+
+    # Create a directed graph
+    graph = ig.Graph(directed=True)
+
+    # Add nodes (TF motifs)
+    nodes = pd.concat([df["antecedents"], df["consequents"]]).unique()
+    graph.add_vertices(nodes)
+    graph.vs["TF_motif"] = [node["name"].split("_")[0] for node in graph.vs]
+    graph.vs["dir"] = [node["name"].split("_")[1] for node in graph.vs]
+    graph.vs["time"] = [node["name"].split("_")[2] for node in graph.vs]
+    graph.vs["cluster"] = [node_cluster_df.loc[node_cluster_df["TF_motif"] == node["TF_motif"],"cluster"].iloc[0]  for node in graph.vs]
+    graph.vs["color"] = [cluster_color_map[node["cluster"]] for node in graph.vs]
+
+
+    # Add edges
+    for index, row in df.iterrows():
+        color = 'green' if row['antecedents_dir'] == row['consequents_dir'] else 'red'
+        graph.add_edge(row['antecedents'], row['consequents'], 
+                    color=color, support=row['support'], confidence=row['confidence'], lift=row['lift'],
+                    antecedent = row["antecedents_TF_motif"], consequent = row["consequents_TF_motif"],
+                    same_direction = row["antecedents_dir"] == row["consequents_dir"], TF_peak_jaccard = row["TF_peak_jaccard"])
+
+    # Get edge attributes
+    g_edge_tooltips = ["{}-{}<br>Support: {:.4f}<br>Confidence: {:.4f}<br>Lift: {:.4f}<br>TF_jaccard: {:.4f}".format(edge['antecedent'],edge['consequent'],edge['support'], edge['confidence'], edge['lift'], edge['TF_peak_jaccard']) for edge in graph.es]
+    g_color = ["green" if edge["same_direction"] else "red"  for edge in graph.es]
+    g_width = [int(edge["lift"] * (1-edge["TF_peak_jaccard"])) for edge in graph.es]
+
+
+    # Layout using Kamada-Kawai algorithm
+    layout = graph.layout('kk')
+
+
+    # Create the Plotly figure
+    g_edge_x = []
+    g_edge_y = []
+
+    for e in graph.es:
+        x0, y0 = layout[e.source]
+        x1, y1 = layout[e.target]
+        g_edge_x.extend([x0, x1, None])
+        g_edge_y.extend([y0, y1, None])
+
+    g_edge_trace_ls = []
+    for w,c in set(zip(g_width,g_color)):
+        index_filter = [i for i,val in enumerate(zip(g_width,g_color)) if (val[0] == w) & (val[1] == c)]
+        g_edge_trace_ls.append(go.Scatter(
+            x=[ix for i in index_filter for ix in g_edge_x[i*3:i*3+3]], y=[ix for i in index_filter for ix in g_edge_y[i*3:i*3+3]],
+            line=dict(width=2, color=fade_to_white( max(w/ np.max(g_width),0.1),start_r= 0 if c == "green" else 150,start_g= 150 if c == "green" else 0, alpha=0.8)),
+            hoverinfo='text',
+            text=[g_edge_tooltips[i] for i in index_filter],
+            mode='lines')
+            )
+
+    g_edge_middle_trace = go.Scatter(
+        x=[(g_edge_x[i] + g_edge_x[i+1])/2 for i in range(0,len(g_edge_x),3)], y=[(g_edge_y[i] + g_edge_y[i+1])/2 for i in range(0,len(g_edge_y),3)],
+        mode='markers',
+        hoverinfo='text',
+        text=g_edge_tooltips,
+        hoverlabel=dict(
+            bgcolor="rgba(230,236,246,0.4)"  # Background color when hovering
+        ),
+        marker=go.Marker(
+            opacity=0
+        ))
+
+
+    node_x = [layout[v.index][0] for v in graph.vs]
+    node_y = [layout[v.index][1] for v in graph.vs]
+    node_text = ["{}<br>time {}<br>{}<br>{}".format(node["TF_motif"],node["time"],node["dir"],node["cluster"]) for node in graph.vs]
+    node_TF_motif = graph.vs["TF_motif"]
+    node_cluster = graph.vs["cluster"]
+    node_time = graph.vs["time"]
+    node_color = graph.vs["color"]
+    node_shape = graph.vs["time"]
+    node_outline_color = ["green" if node["dir"] == "pos" else "red" for node in graph.vs]
+
+
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        text=node_TF_motif,
+        hoverinfo='text',
+        hovertext=node_text,
+        textposition='top center',
+        textfont=dict(
+            size=10,  # Adjust the font size as needed
+        ),
+        marker=dict(
+            size=8,
+            color=node_color,
+            symbol=node_shape,
+            line=dict(color=node_outline_color, width=0.75)
+            ),
+        hoverlabel=dict(
+                bgcolor=node_color  # Background color when hovering
+            )
+        )
+
+    fig = go.Figure(data=g_edge_trace_ls + [g_edge_middle_trace, node_trace],
+                    layout=go.Layout(
+                        showlegend=False,
+                        plot_bgcolor='white',
+                        hovermode='closest',
+                        margin=dict(b=0,l=0,r=0,t=40),
+                        title="Association Rules Network",
+                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                    )
+
+
+    # Returning the figure
+    return fig
+
 
 def generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette):
     nodes = list(pd.concat([
