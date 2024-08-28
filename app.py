@@ -72,27 +72,51 @@ app.layout = html.Div([
     dcc.Tabs([
             dcc.Tab(label='TF Co-regulation', children=[
                 html.Div([
-                html.Label("Minimum Score Threshold:"),
-                dcc.Slider(
-                    id='tabCo_score_threshold',
-                    min=0.5,
-                    max=round(data['score'].abs().max(), 1),
-                    step=0.1,
-                    value=1,
-                    marks={(i+0.00001)/10: {"label": str(round((i+0.00001)/10, 1))} for i in range(0, 200, 5) if i/10 < data['score'].abs().max()},
-                    tooltip={"placement": "bottom", "always_visible": True}
-                ),
-                html.Label("Minimum Support Threshold:"),
-                dcc.Slider(
-                    id='tabCo_support_threshold',
-                    min=0.05,
-                    max=1,
-                    step=0.01,
-                    value=0.06,  # Default value for support threshold
-                    marks={i/100: {"label": str(i/100)} for i in range(0, 101, 10)},
-                    tooltip={"placement": "bottom", "always_visible": True}
-                ),
-            ], style={'width': '50%', 'margin': '10px auto'}),
+                    html.Label("Minimum Score Threshold:"),
+                    dcc.Slider(
+                        id='tabCo_score_threshold',
+                        min=0.5,
+                        max=round(data['score'].abs().max(), 1),
+                        step=0.1,
+                        value=1,
+                        marks={(i+0.00001)/10: {"label": str(round((i+0.00001)/10, 1))} for i in range(0, 200, 5) if i/10 < data['score'].abs().max()},
+                        tooltip={"placement": "bottom", "always_visible": True}
+                    ),
+                    html.Label("Minimum Support Threshold:"),
+                    dcc.Slider(
+                        id='tabCo_support_threshold',
+                        min=0.05,
+                        max=1,
+                        step=0.01,
+                        value=0.06,  # Default value for support threshold
+                        marks={i/100: {"label": str(i/100)} for i in range(0, 101, 10)},
+                        tooltip={"placement": "bottom", "always_visible": True}
+                    ),
+                ], style={'width': '50%', 'margin': '10px auto'}),
+                html.Div([
+                    html.Label("Minimum Adjusted Lift Threshold:"),
+                    dcc.Slider(
+                        id='tabCo_peak_adj_lift_threshold',
+                        min=0,  # These will be dynamically updated
+                        max=1,  # These will be dynamically updated
+                        step=0.1,
+                        value=0,  # Default range selection
+                        marks={},  # Dynamic marks
+                        tooltip={"placement": "bottom", "always_visible": True}
+                    ),
+                    html.Label("Select Time:"),
+                    dcc.Dropdown(
+                        id='tabCo_time_filter',
+                        options=[{'label': str(i), 'value': i} for i in range(0, 10)],
+                        multi=True
+                    ),
+                    html.Label("Select Direction:"),
+                    dcc.Dropdown(
+                        id='tabCo_direction_filter',
+                        options=[{'label': 'pos', 'value': 'pos'}, {'label': 'neg', 'value': 'neg'}],
+                        multi=True
+                    ),
+                ], style={'width': '50%', 'margin': '10px auto', 'borderTop': '2px solid #dee2e6', 'paddingTop': '20px'}),
                 dcc.Graph(
                     id='tf_co_regulation_graph',
                     style={'height': '100vh', 'width': '100vw'}  # Adjust as needed
@@ -401,15 +425,45 @@ def update_arules_data(tabCo_score_threshold, tabCo_support_threshold):
     return allq_arules_df.to_dict('records')
 
 @app.callback(
-    Output('tf_co_regulation_graph', 'figure'),
-    Input('stored_arules_df', 'data')  # Use the stored arules data as input
+    [
+        Output('tabCo_peak_adj_lift_threshold', 'min'),
+        Output('tabCo_peak_adj_lift_threshold', 'max'),
+        Output('tabCo_peak_adj_lift_threshold', 'value'),
+        Output('tabCo_peak_adj_lift_threshold', 'marks')
+    ],
+    Input('stored_arules_df', 'data')
 )
-def update_tf_co_regulation_graph(stored_arules_df):
+def update_peak_adj_lift_slider(stored_arules_df):
+    if not stored_arules_df:
+        return 0, 1, [0, 1], {}
+    
+    df = pd.DataFrame(stored_arules_df)
+    
+    min_lift = df['peak_adj_lift'].min()
+    max_lift = df['peak_adj_lift'].max()
+    
+    # Generate marks for the slider
+    marks = {val: {"label": str(val)} for val in range(0, int(max_lift+1), 1)}
+    
+    return min_lift, max_lift, min_lift, marks
+
+@app.callback(
+    Output('tf_co_regulation_graph', 'figure'),
+    [
+        Input('stored_arules_df', 'data'),  # Use the stored arules data as input
+        Input('tabCo_peak_adj_lift_threshold', 'value'),
+        Input('tabCo_time_filter', 'value'),
+        Input('tabCo_direction_filter', 'value')
+    ]
+)
+def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter):
+    tabCo_direction_filter = tabCo_direction_filter if tabCo_direction_filter else ["pos", "neg"]
+    tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else [0,1,2,3,4,5,6,7,8,9]
     # Convert the stored data back to a DataFrame
     allq_arules_df = pd.DataFrame(stored_arules_df)
     
     # Generate the graph using the existing logic
-    fig = generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df)
+    fig = generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter)
     return fig
 
 # Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
@@ -578,13 +632,22 @@ def make_arules(data, tabCo_score_threshold, tabCo_support_threshold):
         return intersection/union
 
     perGene_ass_rules_df["TF_peak_jaccard"] = perGene_ass_rules_df.apply(calc_jaccard_apply,axis=1)
+    perGene_ass_rules_df = perGene_ass_rules_df.assign(peak_adj_lift = lambda x: (1 - x["TF_peak_jaccard"]) * x["lift"])
     
     return perGene_ass_rules_df
 
 
-def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df):
+def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter):
 
     data["TF_motif"] = data["TF_motif"].str.split('::',expand=True)[0].str.split('(',expand=True)[0].str.upper()
+
+    allq_arules_df = allq_arules_df[
+        (allq_arules_df['peak_adj_lift'] >= tabCo_peak_adj_lift_threshold) &
+        (allq_arules_df['antecedents_time'].astype(int).isin(tabCo_time_filter)) &
+        (allq_arules_df['consequents_time'].astype(int).isin(tabCo_time_filter)) &
+        (allq_arules_df['antecedents_dir'].isin(tabCo_direction_filter)) &
+        (allq_arules_df['consequents_dir'].isin(tabCo_direction_filter))
+    ]
 
     # Generate the igraph network visualization 
     # Note: We will create the plot and return it
@@ -610,7 +673,7 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df):
     # arules data provided by mlxtend
     df = allq_arules_df.query("confidence < 1.1").loc[:,["antecedents","antecedents_TF_motif", "antecedents_dir", "antecedents_time", "consequents","consequents_TF_motif",
                                 "consequents_dir", "consequents_time", "antecedent support", "consequent support", "support",
-                                "confidence", "lift", "TF_peak_jaccard" ]]
+                                "confidence", "lift", "TF_peak_jaccard", "peak_adj_lift" ]]
 
     # node cluster info
     node_cluster_df = pd.merge(pd.concat([df["antecedents_TF_motif"],df["consequents_TF_motif"]],axis=0).drop_duplicates().reset_index(drop=True).rename("TF_motif").to_frame(),
@@ -643,12 +706,12 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df):
         graph.add_edge(row['antecedents'], row['consequents'], 
                     color=color, support=row['support'], confidence=row['confidence'], lift=row['lift'],
                     antecedent = row["antecedents_TF_motif"], consequent = row["consequents_TF_motif"],
-                    same_direction = row["antecedents_dir"] == row["consequents_dir"], TF_peak_jaccard = row["TF_peak_jaccard"])
+                    same_direction = row["antecedents_dir"] == row["consequents_dir"], TF_peak_jaccard = row["TF_peak_jaccard"], peak_adj_lift = row["peak_adj_lift"])
 
     # Get edge attributes
-    g_edge_tooltips = ["{}-{}<br>Support: {:.4f}<br>Confidence: {:.4f}<br>Lift: {:.4f}<br>TF_jaccard: {:.4f}".format(edge['antecedent'],edge['consequent'],edge['support'], edge['confidence'], edge['lift'], edge['TF_peak_jaccard']) for edge in graph.es]
+    g_edge_tooltips = ["{}-{}<br>Support: {:.4f}<br>Confidence: {:.4f}<br>Lift: {:.4f}<br>peak_jaccard: {:.4f}".format(edge['antecedent'],edge['consequent'],edge['support'], edge['confidence'], edge['lift'], edge['TF_peak_jaccard']) for edge in graph.es]
     g_color = ["green" if edge["same_direction"] else "red"  for edge in graph.es]
-    g_width = [int(edge["lift"] * (1-edge["TF_peak_jaccard"])) for edge in graph.es]
+    g_width = [round(edge["peak_adj_lift"],1) for edge in graph.es]
 
 
     # Layout using Kamada-Kawai algorithm
