@@ -1,5 +1,5 @@
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, Input, Output, State, ctx
 import plotly.graph_objects as go
 import plotly.figure_factory as ff
 import pandas as pd
@@ -69,7 +69,7 @@ app.layout = html.Div([
         ], style={'width': '80%', 'display': 'inline-block', 'verticalAlign': 'middle'})
     ], style={'width': '100%', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '20px 0', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #dee2e6'}),
     html.H1("TF Explorer"),
-    dcc.Tabs([
+    dcc.Tabs(id='tabs', value='TF Co-regulation',children=[
             dcc.Tab(label='TF Co-regulation', children=[
                 html.Div([
                     html.Label("Minimum Score Threshold:"),
@@ -299,33 +299,31 @@ def blend_colors(tf_color, time_color, alpha=0.7):
 # Callbacks to update filters based on selected TF_motifs and directions
 @app.callback(
     [Output('left_direction_filter', 'options'),
-     Output('left_direction_filter', 'value'),
      Output('left_direction_filter', 'disabled')],
     [Input('left_tf_motif_filter', 'value')]
 )
 def update_left_direction_filter(selected_tf_motifs):
     if not selected_tf_motifs:
-        return [], ['pos', 'neg'], True
+        return [], True
 
     filtered_data = data[data['TF_motif'].isin(selected_tf_motifs)]
     directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
 
-    return directions, ['pos', 'neg'], False
+    return directions, False
 
 @app.callback(
     [Output('right_direction_filter', 'options'),
-     Output('right_direction_filter', 'value'),
      Output('right_direction_filter', 'disabled')],
     [Input('right_tf_motif_filter', 'value')]
 )
 def update_right_direction_filter(selected_tf_motifs):
     if not selected_tf_motifs:
-        return [], ['pos', 'neg'], True
+        return [], True
 
     filtered_data = data[data['TF_motif'].isin(selected_tf_motifs)]
     directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
 
-    return directions, ['pos', 'neg'], False
+    return directions, False
 
 @app.callback(
     [Output('left_time_filter', 'options'),
