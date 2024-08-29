@@ -453,10 +453,11 @@ def update_peak_adj_lift_slider(stored_arules_df):
         Input('stored_arules_df', 'data'),  # Use the stored arules data as input
         Input('tabCo_peak_adj_lift_threshold', 'value'),
         Input('tabCo_time_filter', 'value'),
-        Input('tabCo_direction_filter', 'value')
+        Input('tabCo_direction_filter', 'value'),
+        Input('tf_co_regulation_graph', 'clickData')
     ]
 )
-def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter):
+def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter, clickData):
     tabCo_direction_filter = tabCo_direction_filter if tabCo_direction_filter else ["pos", "neg"]
     tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else [0,1,2,3,4,5,6,7,8,9]
     # Convert the stored data back to a DataFrame
@@ -464,6 +465,15 @@ def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshol
     
     # Generate the graph using the existing logic
     fig = generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter)
+
+    if clickData is not None:
+        # Extract the clicked node's label
+        clicked_node_label = clickData['points'][0]['text']
+        clicked_node_hovertext = clickData['points'][0]['hovertext']
+
+        # Highlight the clicked node and its connected edges and nodes
+        fig = highlight_node_and_edges(fig, clicked_node_hovertext, allq_arules_df)
+
     return fig
 
 # Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
@@ -754,7 +764,7 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_
 
     node_x = [layout[v.index][0] for v in graph.vs]
     node_y = [layout[v.index][1] for v in graph.vs]
-    node_text = ["{}<br>time {}<br>{}<br>{}".format(node["TF_motif"],node["time"],node["dir"],node["cluster"]) for node in graph.vs]
+    node_text = ["{}<br>{}<br>time {}<br>{}".format(node["TF_motif"],node["dir"],node["time"],node["cluster"]) for node in graph.vs]
     node_TF_motif = graph.vs["TF_motif"]
     node_cluster = graph.vs["cluster"]
     node_time = graph.vs["time"]
@@ -773,6 +783,7 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_
         textposition='top center',
         textfont=dict(
             size=10,  # Adjust the font size as needed
+            weight = "normal"
         ),
         marker=dict(
             size=8,
@@ -799,6 +810,63 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_
 
     # Returning the figure
     return fig
+
+def highlight_node_and_edges(fig, clicked_node_hovertext, allq_arules_df):
+    # converting hover text to _ speprated string
+    def hover_to_str(hovertext):
+        return "_".join(hovertext.replace("time ","").split("<br>")[:-1])
+    
+    clicked_node_dir_time = hover_to_str(clicked_node_hovertext)
+    # Identify the nodes and edges connected to the clicked node
+    connected_edges = allq_arules_df[(allq_arules_df['antecedents'] == clicked_node_dir_time ) | 
+                                     (allq_arules_df['consequents'] == clicked_node_dir_time )]
+    
+    
+    connected_nodes = set(connected_edges['antecedents']).union(set(connected_edges['consequents']))
+
+    # Update the graph's node and edge traces to highlight the relevant parts
+    for trace in fig['data']:
+        if trace['mode'] == 'markers+text':
+            # Highlight nodes
+            trace.update(
+                marker=dict(
+                    size=[
+                        16 if hover_to_str(hovertext) == clicked_node_dir_time else 12 if (hover_to_str(hovertext) in connected_nodes) else 8
+                        for hovertext in trace['hovertext']
+                    ],
+                    line=dict(
+                        color=[
+                            'darkred' if ((outline_color == "red") | (outline_color == 'darkred')) else "darkgreen" if (hover_to_str(hovertext) in connected_nodes) else outline_color
+                            for outline_color, hovertext in zip( trace['marker']['line']['color'], trace['hovertext'])
+                        ],
+                        width=[
+                            4 if hover_to_str(hovertext) == clicked_node_dir_time else 2 if (hover_to_str(hovertext) in connected_nodes) else 0.75
+                            for hovertext in trace['hovertext']
+                        ]
+                    )
+                ),
+                textfont=dict(
+                    weight = [
+                        "bold" if hover_to_str(hovertext) in connected_nodes else "normal"
+                        for hovertext in trace['hovertext']
+
+                    ],
+                    color = [
+                        "darkorange" if hover_to_str(hovertext) == clicked_node_dir_time else "darkblue" if (hover_to_str(hovertext) in connected_nodes) else "rgb(0,0,0)"
+                        for hovertext in trace['hovertext']
+
+                    ]
+
+                )
+
+
+            )
+
+    return fig
+
+
+
+
 
 
 def generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette):
