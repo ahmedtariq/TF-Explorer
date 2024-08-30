@@ -117,10 +117,21 @@ app.layout = html.Div([
                         multi=True
                     ),
                 ], style={'width': '50%', 'margin': '10px auto', 'borderTop': '2px solid #dee2e6', 'paddingTop': '20px'}),
-                dcc.Graph(
-                    id='tf_co_regulation_graph',
-                    style={'height': '100vh', 'width': '100vw'}  # Adjust as needed
-                )
+                html.Div([
+                    html.Div([
+                        html.H3(id='button-title', style={'textAlign': 'center', 'color': 'white'}),
+                        html.Div([
+                            html.A(html.Button("Gene Cards", id='gene-card-button', style={'display': 'none', 'marginRight': '10px'}),
+                                id='gene-card-link', href='', target='_blank', style={'display': 'none'}),
+                            html.Button("Analyse", id='analyse-button', style={'display': 'none'}),
+                        ], style={'textAlign': 'center'}),
+                    ], id='button-container', style={'display': 'flex','alignItems': 'center','position': 'absolute', 'top': '10px', 'left': '10px', 'zIndex': 2, 'backgroundColor': 'rgba(0,0,0,0.4)', 'padding': '10px', 'borderRadius': '8px'}),
+                    
+                    dcc.Graph(
+                        id='tf_co_regulation_graph',
+                        style={'height': '100vh', 'width': '100vw'}  # Adjust as needed
+                    )
+                ], style={'position': 'relative'}) 
         ]),
         dcc.Tab(label='Transcription Factor', children=[
             html.Div([
@@ -446,6 +457,50 @@ def update_peak_adj_lift_slider(stored_arules_df):
     return min_lift, max_lift, min_lift, marks
 
 @app.callback(
+    [Output('gene-card-button', 'style'),
+     Output('analyse-button', 'style'),
+     Output('button-title', 'children'),
+     Output('gene-card-link', 'href'),
+     Output('gene-card-link', 'style')],
+    [Input('tf_co_regulation_graph', 'clickData')],
+    [State('gene-card-button', 'style'),
+     State('analyse-button', 'style'),
+     State('gene-card-link', 'style')]
+)
+def display_buttons_on_click(clickData, gene_button_style, analyse_button_style, gene_link_style):
+    if clickData is None:
+        return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
+
+    clicked_node = clickData['points'][0]['text']  # Assuming the clicked node's text is the gene name or TF motif
+
+    if "-" not in clicked_node:  # Example condition to decide if it's a gene node
+        button_title = f"{clicked_node}:  "
+        modern_button_style = {
+            'display': 'inline-block',
+            'padding': '10px 20px',
+            'fontSize': '16px',
+            'borderRadius': '8px',
+            'border': 'none',
+            'color': 'white',
+            'backgroundColor': '#007bff',
+            'cursor': 'pointer',
+            'marginRight': '10px',
+            'transition': 'background-color 0.3s',
+        }
+        gene_button_style = modern_button_style
+        analyse_button_style = modern_button_style
+        gene_link_style = {'display': 'inline-block'}
+        
+        # Assuming clicked_node corresponds to a gene name or identifier
+        gene_card_url = f"https://www.genecards.org/cgi-bin/carddisp.pl?gene={clicked_node}"
+        
+        return gene_button_style, analyse_button_style, button_title, gene_card_url, gene_link_style
+    
+    return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
+
+
+
+@app.callback(
     Output('tf_co_regulation_graph', 'figure'),
     [
         Input('stored_arules_df', 'data'),  # Use the stored arules data as input
@@ -464,13 +519,9 @@ def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshol
     # Generate the graph using the existing logic
     fig = generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter)
 
-    if clickData is not None:
-        # Extract the clicked node's label
-        clicked_node_label = clickData['points'][0]['text']
-        clicked_node_hovertext = clickData['points'][0]['hovertext']
-
+    if (clickData is not None):
         # Highlight the clicked node and its connected edges and nodes
-        fig = highlight_node_and_edges(fig, clicked_node_hovertext, allq_arules_df)
+        fig = highlight_node_and_edges(fig, clickData, allq_arules_df)
 
     return fig
 
@@ -491,7 +542,7 @@ def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshol
      Input('gene_set_filter', 'value'),
      Input('background_choice', 'value')]
 )
-def update_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter, background_choice):
+def update_tf_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter, background_choice):
     if not left_tf_motif_filter:
         return go.Figure(), go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
 
@@ -555,7 +606,7 @@ def update_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter,
      Input('tabG_score_threshold', 'value'),
      Input('tabG_background_choice', 'value')]
 )
-def update_gene_tab_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter, score_threshold, background_choice):
+def update_gene_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter, score_threshold, background_choice):
     if not tabG_gene_filter:
         return go.Figure(), go.Figure()  # Return empty figures if no gene is selected
 
@@ -800,7 +851,6 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_
                         plot_bgcolor='white',
                         hovermode='closest',
                         margin=dict(b=0,l=0,r=0,t=40),
-                        title="Association Rules Network",
                         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
                     )
@@ -809,57 +859,61 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_
     # Returning the figure
     return fig
 
-def highlight_node_and_edges(fig, clicked_node_hovertext, allq_arules_df):
-    # converting hover text to _ speprated string
-    def hover_to_str(hovertext):
-        return "_".join(hovertext.replace("time ","").split("<br>")[:-1])
-    
-    clicked_node_dir_time = hover_to_str(clicked_node_hovertext)
-    # Identify the nodes and edges connected to the clicked node
-    connected_edges = allq_arules_df[(allq_arules_df['antecedents'] == clicked_node_dir_time ) | 
-                                     (allq_arules_df['consequents'] == clicked_node_dir_time )]
-    
-    
-    connected_nodes = set(connected_edges['antecedents']).union(set(connected_edges['consequents']))
+def highlight_node_and_edges(fig, clickData, allq_arules_df):
+    try:
+        clicked_node_hovertext = clickData['points'][0]['hovertext']
+        # converting hover text to _ speprated string
+        def hover_to_str(hovertext):
+            return "_".join(hovertext.replace("time ","").split("<br>")[:-1])
+        
+        clicked_node_dir_time = hover_to_str(clicked_node_hovertext)
+        # Identify the nodes and edges connected to the clicked node
+        connected_edges = allq_arules_df[(allq_arules_df['antecedents'] == clicked_node_dir_time ) | 
+                                        (allq_arules_df['consequents'] == clicked_node_dir_time )]
+        
+        
+        connected_nodes = set(connected_edges['antecedents']).union(set(connected_edges['consequents']))
 
-    # Update the graph's node and edge traces to highlight the relevant parts
-    for trace in fig['data']:
-        if trace['mode'] == 'markers+text':
-            # Highlight nodes
-            trace.update(
-                marker=dict(
-                    size=[
-                        16 if hover_to_str(hovertext) == clicked_node_dir_time else 12 if (hover_to_str(hovertext) in connected_nodes) else 8
-                        for hovertext in trace['hovertext']
-                    ],
-                    line=dict(
-                        color=[
-                            'darkred' if ((outline_color == "red") | (outline_color == 'darkred')) else "darkgreen" if (hover_to_str(hovertext) in connected_nodes) else outline_color
-                            for outline_color, hovertext in zip( trace['marker']['line']['color'], trace['hovertext'])
-                        ],
-                        width=[
-                            4 if hover_to_str(hovertext) == clicked_node_dir_time else 2 if (hover_to_str(hovertext) in connected_nodes) else 0.75
+        # Update the graph's node and edge traces to highlight the relevant parts
+        for trace in fig['data']:
+            if trace['mode'] == 'markers+text':
+                # Highlight nodes
+                trace.update(
+                    marker=dict(
+                        size=[
+                            16 if hover_to_str(hovertext) == clicked_node_dir_time else 12 if (hover_to_str(hovertext) in connected_nodes) else 8
                             for hovertext in trace['hovertext']
+                        ],
+                        line=dict(
+                            color=[
+                                'darkred' if ((outline_color == "red") | (outline_color == 'darkred')) else "darkgreen" if (hover_to_str(hovertext) in connected_nodes) else outline_color
+                                for outline_color, hovertext in zip( trace['marker']['line']['color'], trace['hovertext'])
+                            ],
+                            width=[
+                                4 if hover_to_str(hovertext) == clicked_node_dir_time else 2 if (hover_to_str(hovertext) in connected_nodes) else 0.75
+                                for hovertext in trace['hovertext']
+                            ]
+                        )
+                    ),
+                    textfont=dict(
+                        weight = [
+                            "bold" if hover_to_str(hovertext) in connected_nodes else "normal"
+                            for hovertext in trace['hovertext']
+
+                        ],
+                        color = [
+                            "blue" if hover_to_str(hovertext) == clicked_node_dir_time else "darkblue" if (hover_to_str(hovertext) in connected_nodes) else "rgb(0,0,0)"
+                            for hovertext in trace['hovertext']
+
                         ]
+
                     )
-                ),
-                textfont=dict(
-                    weight = [
-                        "bold" if hover_to_str(hovertext) in connected_nodes else "normal"
-                        for hovertext in trace['hovertext']
 
-                    ],
-                    color = [
-                        "darkorange" if hover_to_str(hovertext) == clicked_node_dir_time else "darkblue" if (hover_to_str(hovertext) in connected_nodes) else "rgb(0,0,0)"
-                        for hovertext in trace['hovertext']
-
-                    ]
 
                 )
-
-
-            )
-
+    except Exception as e:
+        if e != 'hovertext':
+            print(f"Error highlighting in Co-rgulation: {e}")
     return fig
 
 
