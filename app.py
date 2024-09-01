@@ -17,6 +17,7 @@ import os
 # Load the dataset
 file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap_lag.csv')
 data = pd.read_csv(file_path)
+data["TF_motif"] = data["TF_motif"].str.split('::',expand=True)[0].str.split('(',expand=True)[0].str.upper()
 
 tfcluster = pd.read_csv("https://jaspar.elixir.no/static/clustering/2024/vertebrates/CORE/interactive_trees/clusters.tab", sep='\t')\
 .loc[:, ["cluster", "id", "name"]].assign(name = lambda x: x['name'].str.split(","))\
@@ -53,6 +54,7 @@ server = app.server
 # App layout
 app.layout = html.Div([
     dcc.Store(id='stored_arules_df'),  # Store component to hold the buffered arules data
+    dcc.Store(id='stored_tf_data'),  # Store to hold TF data when Analyse is clicked
     html.Div([
         html.Div([
             html.A(
@@ -69,8 +71,8 @@ app.layout = html.Div([
         ], style={'width': '80%', 'display': 'inline-block', 'verticalAlign': 'middle'})
     ], style={'width': '100%', 'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '20px 0', 'backgroundColor': '#f8f9fa', 'borderBottom': '2px solid #dee2e6'}),
     html.H1("TF Explorer"),
-    dcc.Tabs(id='tabs', value='TF Co-regulation',children=[
-            dcc.Tab(label='TF Co-regulation', children=[
+    dcc.Tabs(id='tabs', value='tabCo',children=[
+            dcc.Tab(value="tabCo",label='TF Co-regulation', children=[
                 html.Div([
                     html.Label("Minimum Score Threshold:"),
                     dcc.Slider(
@@ -133,7 +135,7 @@ app.layout = html.Div([
                     )
                 ], style={'position': 'relative'}) 
         ]),
-        dcc.Tab(label='Transcription Factor', children=[
+        dcc.Tab(value='tabTF',label='Transcription Factor', children=[
             html.Div([
                 html.Div([
                     html.Label("Select left TF_motif:"),
@@ -242,7 +244,7 @@ app.layout = html.Div([
                 style={'height': '60vh', 'width': '100vw'}  # Adjust the height as needed
             )
         ]),
-        dcc.Tab(label='Gene', children=[
+        dcc.Tab(value='tabGene',label='Gene', children=[
             html.Div([
                 html.Label("Select Gene:"),
                 dcc.Dropdown(
@@ -498,6 +500,73 @@ def display_buttons_on_click(clickData, gene_button_style, analyse_button_style,
     
     return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
 
+# getting the click data and storing it
+@app.callback(
+    Output('stored_tf_data', 'data'),
+    [Input('analyse-button', 'n_clicks')],
+    [State('tf_co_regulation_graph', 'clickData'),
+     State('stored_arules_df', 'data')]
+)
+def store_clicked_tf_data(n_clicks, clickData, stored_arules_df):
+    if n_clicks is None or clickData is None:
+        return {}
+    
+    clicked_node = clickData['points'][0]['hovertext'].split('<br>')
+    
+    tf_motif = clicked_node[0].split("<br>")[0]
+    direction = clicked_node[1]
+    time = int(clicked_node[2].split(" ")[1])
+    
+    # Identify connected nodes
+    df = pd.DataFrame(stored_arules_df)
+    connected_tf_motifs = list(set(df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_TF_motif'].tolist() +
+                            df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_TF_motif'].tolist()))
+    connected_directions = list(set(df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_dir'].tolist() +
+                            df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_dir'].tolist()))
+    connected_times = list(set(df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_time'].astype(int).tolist() + 
+                        df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_time'].astype(int).tolist()))
+
+    # make join inner
+    join_type = "inner"
+    
+    return {
+        'left_tf': tf_motif,
+        'left_direction': direction,
+        'left_time': time,
+        'right_tf': connected_tf_motifs,
+        'right_direction': connected_directions,
+        'right_time': connected_times,
+        'join_type' : join_type
+    }
+
+@app.callback(
+    [Output("tabs", "value"),
+     Output('left_tf_motif_filter', 'value'),
+     Output('left_direction_filter', 'value'),
+     Output('left_time_filter', 'value'),
+     Output('right_tf_motif_filter', 'value'),
+     Output('right_direction_filter', 'value'),
+     Output('right_time_filter', 'value'),
+     Output('join_type', 'value'),
+     Output('score_threshold', 'value')],
+    [Input('stored_tf_data', 'data')],
+    [State('tabCo_score_threshold', 'value')]
+)
+def update_tf_tab_selectors(stored_tf_data, tabCo_score_threshold):
+    if not stored_tf_data:
+        return [dash.no_update] * 9
+    switch_to_tab = 'tabTF'
+    return (
+        switch_to_tab,
+        [stored_tf_data['left_tf']],
+        [stored_tf_data['left_direction']],
+        [stored_tf_data['left_time']],
+        stored_tf_data['right_tf'],
+        stored_tf_data['right_direction'],
+        stored_tf_data['right_time'],
+        stored_tf_data['join_type'],
+        tabCo_score_threshold
+    )
 
 
 @app.callback(
@@ -631,13 +700,12 @@ def update_gene_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter
     nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary_left, df_summary_right, True, tf_motif_colors, time_colors, background_color, color_palette)
 
     sankey_fig = create_sankey_figure(nodes, links, node_colors)
-    distance_density_fig = create_distance_density_plot(filtered_data, background_choice, left_filterd_TF_motf, right_filterd_TF_motf, data)
+    distance_density_fig = create_distance_density_plot(filtered_data, pd.DataFrame(columns = filtered_data.columns ), background_choice, left_filterd_TF_motf, right_filterd_TF_motf, data)
 
     return sankey_fig, distance_density_fig
 
 
 def make_arules(data, tabCo_score_threshold, tabCo_support_threshold):
-    data["TF_motif"] = data["TF_motif"].str.split('::',expand=True)[0].str.split('(',expand=True)[0].str.upper()
     # Apply the score threshold filter
     data = data[data["score"].abs() > tabCo_score_threshold]
 
@@ -698,7 +766,6 @@ def make_arules(data, tabCo_score_threshold, tabCo_support_threshold):
 
 def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter):
 
-    data["TF_motif"] = data["TF_motif"].str.split('::',expand=True)[0].str.split('(',expand=True)[0].str.upper()
 
     allq_arules_df = allq_arules_df[
         (allq_arules_df['peak_adj_lift'] >= tabCo_peak_adj_lift_threshold) &
