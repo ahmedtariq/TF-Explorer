@@ -303,7 +303,7 @@ app.layout = html.Div([
 
 
 # Helper function to blend TF_motif color with time greyscale
-def blend_colors(tf_color, time_color, alpha=0.7):
+def blend_colors(tf_color, time_color, alpha=0.3):
     tf_rgb = np.array(tf_color[:3] + (0.4,))
     time_rgb = np.array(time_color[:3] + (0.4,))
     blended_rgb = (1 - alpha) * tf_rgb + alpha * time_rgb
@@ -470,34 +470,38 @@ def update_peak_adj_lift_slider(stored_arules_df):
      State('gene-card-link', 'style')]
 )
 def display_buttons_on_click(clickData, gene_button_style, analyse_button_style, gene_link_style):
-    if clickData is None:
-        return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
+    try:
+        if clickData is None:
+            return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
 
-    clicked_node = clickData['points'][0]['text']  # Assuming the clicked node's text is the gene name or TF motif
+        clicked_node = clickData['points'][0]['hovertext'].split("<br>")[0]  # Assuming the clicked node's text is the gene name or TF motif
 
-    if "-" not in clicked_node:  # Example condition to decide if it's a gene node
-        button_title = f"{clicked_node}:  "
-        modern_button_style = {
-            'display': 'inline-block',
-            'padding': '10px 20px',
-            'fontSize': '16px',
-            'borderRadius': '8px',
-            'border': 'none',
-            'color': 'white',
-            'backgroundColor': '#007bff',
-            'cursor': 'pointer',
-            'marginRight': '10px',
-            'transition': 'background-color 0.3s',
-        }
-        gene_button_style = modern_button_style
-        analyse_button_style = modern_button_style
-        gene_link_style = {'display': 'inline-block'}
-        
-        # Assuming clicked_node corresponds to a gene name or identifier
-        gene_card_url = f"https://www.genecards.org/cgi-bin/carddisp.pl?gene={clicked_node}"
-        
-        return gene_button_style, analyse_button_style, button_title, gene_card_url, gene_link_style
-    
+        if '--' not in clicked_node:  # Example condition to decide if it's a gene node
+            button_title = f"{clicked_node}:  "
+            modern_button_style = {
+                'display': 'inline-block',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '8px',
+                'border': 'none',
+                'color': 'white',
+                'backgroundColor': '#007bff',
+                'cursor': 'pointer',
+                'marginRight': '10px',
+                'transition': 'background-color 0.3s',
+            }
+            gene_button_style = modern_button_style
+            analyse_button_style = modern_button_style
+            gene_link_style = {'display': 'inline-block'}
+            
+            # Assuming clicked_node corresponds to a gene name or identifier
+            gene_card_url = f"https://www.genecards.org/cgi-bin/carddisp.pl?gene={clicked_node.split('-')[0]}"
+            
+            return gene_button_style, analyse_button_style, button_title, gene_card_url, gene_link_style
+
+    except Exception as e:
+        if e != 'hovertext':
+            print(f"Error highlighting in Co-rgulation: {e}")    
     return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
 
 # getting the click data and storing it
@@ -835,7 +839,7 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_
                     same_direction = row["antecedents_dir"] == row["consequents_dir"], TF_peak_jaccard = row["TF_peak_jaccard"], peak_adj_lift = row["peak_adj_lift"])
 
     # Get edge attributes
-    g_edge_tooltips = ["{}-{}<br>Support: {:.4f}<br>Confidence: {:.4f}<br>Lift: {:.4f}<br>peak_jaccard: {:.4f}".format(edge['antecedent'],edge['consequent'],edge['support'], edge['confidence'], edge['lift'], edge['TF_peak_jaccard']) for edge in graph.es]
+    g_edge_tooltips = ["{}--{}<br>Support: {:.4f}<br>Confidence: {:.4f}<br>Lift: {:.4f}<br>peak_jaccard: {:.4f}".format(edge['antecedent'],edge['consequent'],edge['support'], edge['confidence'], edge['lift'], edge['TF_peak_jaccard']) for edge in graph.es]
     g_color = ["green" if edge["same_direction"] else "red"  for edge in graph.es]
     g_width = [round(edge["peak_adj_lift"],1) for edge in graph.es]
 
@@ -1068,7 +1072,7 @@ def create_sankey_links(df_summary, node_indices, tf_motif_colors, time_colors, 
         blended_color = blend_colors(tf_motif_colors[tf_motif.strip()], time_colors[str(row['time'])])
         links['color'].append(blended_color)
         links['label'].append('peak: ' + peak)
-        links['hovercolor'].append("mediumturquoise")
+        links['hovercolor'].append("darkolivegreen")
 
     return links
 
