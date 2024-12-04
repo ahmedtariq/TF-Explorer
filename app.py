@@ -648,7 +648,7 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
         # Generate style_data_conditional for cell-level coloring
         style_data_conditional = []
         for col in pivot.columns:
-            if col in numeric_data:
+            if (col in numeric_data) & (col not in index_cols):
                 for row_idx, value in pivot[col].items():
                     scaled_value = (value - min_val) / range_val
                     background_color = f'rgb(255, {255 - int(255 * scaled_value)}, 200)'
@@ -657,6 +657,16 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
                         'backgroundColor': background_color,
                         'color': 'black'
                     })
+        style_data_conditional += [
+            {
+                'if': {'column_id': index_col},
+                'position': 'sticky',
+                'left': f'{index_cols.index(index_col)*50}px',
+                'zIndex': 1,
+                'backgroundColor': 'white',
+                'fontWeight': 'bold'
+            } for index_col in index_cols
+        ]
 
         print("[DEBUG] Pivot table generated successfully.")
         print(pivot)  # Log the pivot table for debugging
