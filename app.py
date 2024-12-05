@@ -241,7 +241,7 @@ app.layout = html.Div([
                     dcc.Dropdown(
                         id='pivot_columns',
                         options=[{'label': col, 'value': col} for col in filter_data.columns],
-                        multi=True
+                        multi=False
                     ),
                     html.Label("Choose Value to Analyze:"),
                     dcc.Dropdown(
@@ -262,12 +262,54 @@ app.layout = html.Div([
                         ]
                     ),
                     html.Button('Generate Pivot Table', id='generate_pivot', n_clicks=0),
-                    dash_table.DataTable(
-                        id='pivot_table',
-                        style_table={'overflowX': 'scroll', 'maxHeight': '500px', 'overflowY': 'scroll'},
-                        style_header={'position': 'sticky', 'top': 0, 'backgroundColor': 'white', 'fontWeight': 'bold'},
-                        style_cell={'textAlign': 'center', 'fontSize': '10px', 'minWidth': '50px', 'maxWidth': '150px'}
-                    ),
+                    html.Div([
+                        html.Div([
+                            html.Label("Zoom Level:"),
+                            dcc.Slider(
+                                id='zoom-slider',
+                                min=0.1,
+                                max=1.0,
+                                step=0.1,
+                                value=1.0,
+                                marks={i: f"{int(i * 100)}%" for i in [0.1,0.25,0.5, 0.75, 1.0]},
+                                tooltip={"placement": "bottom", "always_visible": True}
+                            ),
+                        ], style={'width': '80%', 'margin': '10px auto'}),
+
+                        html.Div(
+                            [
+                                dash_table.DataTable(
+                                    id='pivot_table',
+                                    style_table={
+                                        'overflow': 'scroll',  # Always show scrollbars
+                                        'width': '100%',  # Fixed container width
+                                        'height': '500px',  # Fixed container height
+                                    },
+                                    style_header={
+                                        'position': 'sticky',
+                                        'top': 0,
+                                        'backgroundColor': 'white',
+                                        'fontWeight': 'bold'
+                                    },
+                                    style_cell={
+                                        'textAlign': 'center',
+                                        'minWidth': '70px',
+                                        'maxWidth': '150px',
+                                        'minHeight': '30px',
+                                        'maxHeight': '70px',
+                                        'fontSize': '16px'  # Default font size
+                                    },
+                                )
+                            ],
+                            id='zoom-container',
+                            style={
+                                'overflow': 'hidden',
+                                'width': '100%',
+                                'height': '500px',
+                                'position': 'relative',
+                            }
+                        )
+                    ]),
                     html.Button("Export Analysis Results", id="download_button", style={'display': 'none'}),
                     dcc.Download(id="download_pivot_table")
                 ], style={'width': '95vw', 'padding': '20px', 'justifyContent': 'center'})
@@ -674,6 +716,43 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
     except Exception as e:
         print(f"[DEBUG] Error in callback: {e}")
         return [{"Error": str(e)}], [], [], {'display': 'none'}
+
+@app.callback(
+    [
+        Output('pivot_table', 'style_cell'),
+        Output('pivot_table', 'style_table'),
+    ],
+    Input('zoom-slider', 'value')
+)
+def update_table_zoom(zoom_level):
+    # Calculate dynamic properties based on zoom level
+    font_size = f"{16 * zoom_level}px"  # Scale font size
+    cell_min_width = f"{70 * zoom_level}px"  # Scale cell min width
+    cell_max_width = f"{150 * zoom_level}px"  # Scale cell max width
+    cell_min_height = f"{30 * zoom_level}px"  # Scale cell height
+    cell_max_height = f"{70 * zoom_level}px"  # Scale cell height
+
+    # Update cell style with dynamic height
+    style_cell = {
+        'textAlign': 'center',
+        'minWidth': cell_min_width,
+        'maxWidth': cell_max_width,
+        'minHeight': cell_min_height,
+        'maxHeight': cell_max_height,
+        'fontSize': font_size
+    }
+
+    # Keep table bounding box fixed and enable scrolling
+    style_table = {
+        'overflow': 'scroll',  # Always show scrollbars
+        'width': '100%',  # Fixed width
+        'height': '500px',  # Fixed height
+        'border': '1px solid #ccc',  # Optional: visual border
+        'box-sizing': 'border-box',  # Ensure consistent layout
+    }
+
+    return style_cell, style_table
+
 
 
 
@@ -1735,4 +1814,4 @@ def create_dist_lag_violin_plot(filtered_data, right_filtered_data, background_c
 # Run the app
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8050))
-    app.run_server(debug=True, host='0.0.0.0', port=port)
+    app.run_server(debug=False, host='0.0.0.0', port=port)
