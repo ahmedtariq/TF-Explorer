@@ -664,8 +664,8 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
 
     try:
         filtered_df = pd.DataFrame(derived_virtual_data)
-        cluster_rows = 'rows' in apply_clustering
-        cluster_cols = 'columns' in apply_clustering
+        cluster_rows = 'rows' in apply_clustering if apply_clustering else False
+        cluster_cols = 'columns' in apply_clustering if apply_clustering else False
 
         pivot = create_pivot_table(filtered_df, index_cols, column_cols, value_col, agg_func, cluster_rows, cluster_cols)
 
