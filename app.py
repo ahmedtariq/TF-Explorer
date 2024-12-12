@@ -821,7 +821,7 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
 
         pivot = create_pivot_table(filtered_df, index_cols, column_cols, value_col, agg_func, cluster_rows, cluster_cols)
 
-        if pivot.empty
+        if pivot.empty:
             return [], [], [], {'display': 'none'}
 
         # Prepare columns for the Dash DataTable
