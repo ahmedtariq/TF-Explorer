@@ -224,6 +224,14 @@ app.layout = html.Div([
                         filter_action='native',
                         sort_action='native',
                         page_size=10,
+                        tooltip_header={
+                            col: {
+                                'value': filter_data[col].describe().round(2).to_string()
+                            }
+                            for col in filter_data.columns
+                        },  # Add tooltips for headers
+                        tooltip_delay=100,  # Delay before showing tooltip (in ms)
+                        tooltip_duration=None,  # Tooltip remains until mouse leaves
                         style_table={'overflowX': 'auto', 'maxHeight': '500px', 'overflowY': 'scroll'},
                         style_cell={'textAlign': 'center', 'minWidth': '70px', 'width': '70px', 'maxWidth': '150px'}
                     ),
@@ -332,7 +340,7 @@ app.layout = html.Div([
                         min=0.01,
                         max=1,
                         step=0.01,
-                        value=0.06,  # Default value for support threshold
+                        value=0.1,  # Default value for support threshold
                         marks={i/100: {"label": str(i/100)} for i in range(0, 101, 10)},
                         tooltip={"placement": "bottom", "always_visible": True}
                     ),
@@ -581,6 +589,26 @@ def apply_advanced_filter(query, selected):
         print("[DEBUG] Advanced filter not enabled, returning empty string.")
         return ''  # Disable advanced filter if not selected
 
+# Callback to update tooltips dynamically
+@app.callback(
+    Output('data_table', 'tooltip_header'),
+    Input('data_table', 'derived_virtual_data')
+)
+def update_tooltips(filtered_data):
+    # Handle the case where no data is displayed
+    if not filtered_data:
+        return {col: {'value': 'No data available'} for col in filter_data.columns}
+
+    # Convert filtered data to a DataFrame
+    filtered_df = pd.DataFrame(filtered_data)
+
+    # Recalculate statistics for the filtered data
+    tooltip_header = {
+        col: {'value': filtered_df[col].describe().round(2).to_string()}
+        for col in filtered_df.columns
+    }
+    return tooltip_header
+
 @app.callback(
     Output("download_data_table", "data"),
     Input("download_data_table_button", "n_clicks"),
@@ -671,7 +699,7 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
 
         if pivot.empty:
             print("[DEBUG] Pivot table is empty.")
-            return [], [], []
+            return [], [], [], {'display': 'none'}
 
         # Prepare columns for the Dash DataTable
         columns = [{"name": str(col), "id": str(col)} for col in pivot.columns]
@@ -1814,4 +1842,4 @@ def create_dist_lag_violin_plot(filtered_data, right_filtered_data, background_c
 # Run the app
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8050))
-    app.run_server(debug=False, host='0.0.0.0', port=port)
+    app.run_server(debug=True, host='0.0.0.0', port=port)
