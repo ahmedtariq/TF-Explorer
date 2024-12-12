@@ -212,30 +212,63 @@ app.layout = html.Div([
                         ],
                         id='advanced-filter-container'
                     ),
-                    dash_table.DataTable(
-                        id='data_table',
-                        columns=[
-                            {"name": col, "id": col,
-                            "type": "numeric" if np.issubdtype(filter_data[col].dtype, np.number) else "text"}
-                            for col in filter_data.columns
-                        ],
-                        data=filter_data.to_dict('records'),
-                        page_action='native',
-                        filter_action='native',
-                        sort_action='native',
-                        page_size=10,
-                        tooltip_header={
-                            col: {
-                                'value': filter_data[col].describe().round(2).to_string()
-                            }
-                            for col in filter_data.columns
-                        },  # Add tooltips for headers
-                        tooltip_delay=100,  # Delay before showing tooltip (in ms)
-                        tooltip_duration=None,  # Tooltip remains until mouse leaves
-                        style_table={'overflowX': 'auto', 'maxHeight': '500px', 'overflowY': 'scroll'},
-                        style_cell={'textAlign': 'center', 'minWidth': '70px', 'width': '70px', 'maxWidth': '150px'}
-                    ),
-                    html.Button("Export TF Links Table", id="download_data_table_button", style={'marginTop': '10px'}),
+                    html.Div([
+                        # DataTable
+                        dash_table.DataTable(
+                            id='data_table',
+                            columns=[
+                                {"name": col, "id": col,
+                                "type": "numeric" if np.issubdtype(filter_data[col].dtype, np.number) else "text"}
+                                for col in filter_data.columns
+                            ],
+                            data=filter_data.to_dict('records'),
+                            page_action='native',
+                            filter_action='native',
+                            sort_action='native',
+                            page_size=10,
+                            tooltip_header={
+                                col: {
+                                    'value': filter_data[col].describe().round(2).to_string()
+                                }
+                                for col in filter_data.columns
+                            },  # Add tooltips for headers
+                            tooltip_delay=100,  # Delay before showing tooltip (in ms)
+                            tooltip_duration=None,  # Tooltip remains until mouse leaves
+                            style_table={'overflowX': 'auto', 'maxHeight': '500px', 'overflowY': 'scroll'},
+                            style_cell={'textAlign': 'center', 'minWidth': '70px', 'width': '70px', 'maxWidth': '150px'}
+                        ),
+                        # Buttons and Store
+                        html.Div([
+                            html.Button(
+                                "Export TF Links Table",
+                                id="download_data_table_button",
+                                style={
+                                    'backgroundColor': '#f8f9fa',
+                                    'border': '1px solid #dee2e6',
+                                    'borderRadius': '4px',
+                                    'color': '#212529',
+                                    'cursor': 'pointer',
+                                    'padding': '5px 10px',
+                                    'marginRight': '10px',
+                                    'textAlign': 'left'
+                                }
+                            ),
+                            html.Button(
+                                "Generate Association Graph",
+                                id="generate_graph_button",
+                                style={
+                                    'backgroundColor': '#f8f9fa',
+                                    'border': '1px solid #dee2e6',
+                                    'borderRadius': '4px',
+                                    'color': '#212529',
+                                    'cursor': 'pointer',
+                                    'padding': '5px 10px',
+                                    'textAlign': 'right'
+                                }
+                            ),
+                            dcc.Store(id='filtered_data_store'),  # Store for filtered data
+                        ], style={ 'marginTop': '10px'})
+                    ], style={'position': 'relative'}),
                     dcc.Download(id="download_data_table"),
                     html.Hr(style={'margin': '20px 0'}),
                     html.H3("Pivot Table Analysis"),
@@ -269,7 +302,19 @@ app.layout = html.Div([
                             {'label': 'Cluster Columns', 'value': 'columns'}
                         ]
                     ),
-                    html.Button('Generate Pivot Table', id='generate_pivot', n_clicks=0),
+                    html.Button(
+                        'Generate Pivot Table', 
+                        id='generate_pivot', 
+                        n_clicks=0,
+                        style={
+                                    'backgroundColor': '#f8f9fa',
+                                    'border': '1px solid #dee2e6',
+                                    'borderRadius': '4px',
+                                    'color': '#212529',
+                                    'cursor': 'pointer',
+                                    'padding': '5px 10px'
+                        }
+                    ),
                     html.Div([
                         html.Div([
                             html.Label("Zoom Level:"),
@@ -318,7 +363,19 @@ app.layout = html.Div([
                             }
                         )
                     ]),
-                    html.Button("Export Analysis Results", id="download_button", style={'display': 'none'}),
+                    html.Button(
+                        "Export Analysis Results",
+                        id="download_button", 
+                        style={
+                            'display': 'none',
+                            'backgroundColor': '#f8f9fa',
+                            'border': '1px solid #dee2e6',
+                            'borderRadius': '4px',
+                            'color': '#212529',
+                            'cursor': 'pointer',
+                            'padding': '5px 10px'
+                        }
+                    ),
                     dcc.Download(id="download_pivot_table")
                 ], style={'width': '95vw', 'padding': '20px', 'justifyContent': 'center'})
             ], style={'flex': '1', 'width': '100%'}),
@@ -370,6 +427,36 @@ app.layout = html.Div([
                     ),
                 ], style={'width': '50%', 'margin': '10px auto', 'borderTop': '2px solid #dee2e6', 'paddingTop': '20px'}),
                 html.Div([
+                    html.Div(id='filtered_data_message', style={
+                        'color': 'red', 
+                        'fontSize': '14px', 
+                        'marginBottom': '10px',
+                        'display': 'none'  # Initially hidden
+                    }),
+                    html.Button(
+                        "Reset to Full Data",
+                        id="reset_button",
+                        style={
+                            'padding': '5px 10px',
+                            'fontSize': '14px',
+                            'borderRadius': '4px',
+                            'border': '1px solid #dee2e6',
+                            'backgroundColor': '#f8f9fa',
+                            'cursor': 'pointer',
+                            'display': 'none'  # Initially hidden
+                        }
+                    ),
+                ], style={
+                    'padding': '10px',
+                    'margin': '10px 0',
+                    'border': '1px solid #ddd',
+                    'borderRadius': '5px',
+                    'backgroundColor': '#ffffff',
+                    'width': 'fit-content',
+                    'maxWidth': '100%',
+                    'textAlign': 'left'
+                }),
+                html.Div([
                     html.Div([
                         html.H3(id='button-title', style={'textAlign': 'center', 'color': 'white'}),
                         html.Div([
@@ -378,7 +465,6 @@ app.layout = html.Div([
                             html.Button("Analyse", id='analyse-button', style={'display': 'none'}),
                         ], style={'textAlign': 'center'}),
                     ], id='button-container', style={'display': 'flex','alignItems': 'center','position': 'absolute', 'top': '10px', 'left': '10px', 'zIndex': 2, 'backgroundColor': 'rgba(0,0,0,0.4)', 'padding': '10px', 'borderRadius': '8px'}),
-                    
                     dcc.Graph(
                         id='tf_co_regulation_graph',
                         style={'height': '100vh', 'width': '100vw'}  # Adjust as needed
@@ -574,19 +660,14 @@ def toggle_advanced_filter(selected):
 )
 def apply_advanced_filter(query, selected):
     # Debugging logs to ensure correct inputs
-    print(f"[DEBUG] Received query: {query}")
-    print(f"[DEBUG] Advanced filter toggle state: {selected}")
 
     if selected and 'advanced' in selected:
         if query:
             # Return the filter query to the DataTable
-            print(f"[DEBUG] Applying filter query: {query}")
             return query
         else:
-            print("[DEBUG] No query provided, returning empty string.")
             return ''  # Return an empty query if no input is given
     else:
-        print("[DEBUG] Advanced filter not enabled, returning empty string.")
         return ''  # Disable advanced filter if not selected
 
 # Callback to update tooltips dynamically
@@ -635,6 +716,53 @@ def show_tooltip(n_clicks):
         return {'display': 'none'}
 
 @app.callback(
+    [
+        Output('filtered_data_store', 'data'),  # Store the filtered data
+        Output('tabCo_time_filter', 'options'),  # Update time filter options
+        Output('tabCo_direction_filter', 'options'),  # Update direction filter options
+        Output('tabs', 'value', allow_duplicate=True),  # Switch to the 2nd tab
+        Output('filtered_data_message', 'children'),  # Show user message
+        Output('filtered_data_message', 'style'),  # Control message visibility
+        Output('reset_button', 'style')  # Control reset button visibility
+    ],
+    [Input('generate_graph_button', 'n_clicks'),  # Triggered by generate graph button
+     Input('reset_button', 'n_clicks')],  # Triggered by reset button
+    State('data_table', 'derived_virtual_data'),
+    prevent_initial_call=True
+)
+def handle_generate_graph(generate_clicks, reset_clicks, filtered_data):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update
+
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if trigger_id == 'reset_button':
+        # Reset to full dataset
+        unique_times = [{'label': str(time), 'value': time} for time in data["time"].unique()]
+        unique_directions = [{'label': str(direction), 'value': direction} for direction in data["direction"].unique()]
+        return None, unique_times, unique_directions, 'tabCo', '', {'display': 'none'}, {'display': 'none'}
+
+    if trigger_id == 'generate_graph_button':
+        if not filtered_data:
+            # Fall back to the full dataset
+            unique_times = [{'label': str(time), 'value': time} for time in data["time"].unique()]
+            unique_directions = [{'label': str(direction), 'value': direction} for direction in data["direction"].unique()]
+            return dash.no_update, unique_times, unique_directions, 'tabCo', '', {'display': 'none'}, {'display': 'none'}
+
+        # Use filtered data
+        filtered_df = pd.DataFrame(filtered_data)
+        unique_times = [{'label': str(time), 'value': time} for time in filtered_df["time"].unique()]
+        unique_directions = [{'label': str(direction), 'value': direction} for direction in filtered_df["direction"].unique()]
+        return (
+            filtered_data, unique_times, unique_directions, 'tabCo',
+            "You are currently viewing a co-regulation graph generated from filtered data in the 'TF-Gene Data and Analysis' tab. To switch back to the full dataset, click the 'Reset to Full Data' button below.",
+            {'display': 'block', 'color': 'red'},  # Show message
+            {'display': 'block'}  # Show reset button
+        )
+
+
+@app.callback(
     Output('pivot_aggfunc', 'options'),
     Input('pivot_values', 'value')
 )
@@ -679,15 +807,11 @@ def update_aggfunc_options(selected_value_col):
     State('apply_clustering', 'value')
 )
 def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols, value_col, agg_func, apply_clustering):
-    print(f"[DEBUG] Generating pivot table... n_clicks={n_clicks}")
-    print(f"[DEBUG] Index: {index_cols}, Columns: {column_cols}, Value: {value_col}, Agg Func: {agg_func}, Clustering: {apply_clustering}")
 
     if not derived_virtual_data:
-        print("[DEBUG] Using full dataset as no filtering applied.")
         derived_virtual_data = filter_data.to_dict('records')
 
     if not index_cols or not value_col or not agg_func:
-        print(f"[DEBUG] Missing required inputs. Index: {index_cols}, Value: {value_col}, Agg Func: {agg_func}")
         return [], [], [], {'display': 'none'}
 
     try:
@@ -697,8 +821,7 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
 
         pivot = create_pivot_table(filtered_df, index_cols, column_cols, value_col, agg_func, cluster_rows, cluster_cols)
 
-        if pivot.empty:
-            print("[DEBUG] Pivot table is empty.")
+        if pivot.empty
             return [], [], [], {'display': 'none'}
 
         # Prepare columns for the Dash DataTable
@@ -737,12 +860,8 @@ def generate_pivot_table(n_clicks, derived_virtual_data, index_cols, column_cols
                 'fontWeight': 'bold'
             } for index_col in index_cols
         ]
-
-        print("[DEBUG] Pivot table generated successfully.")
-        print(pivot)  # Log the pivot table for debugging
         return pivot.to_dict('records'), columns, style_data_conditional, {'display': 'block'}
     except Exception as e:
-        print(f"[DEBUG] Error in callback: {e}")
         return [{"Error": str(e)}], [], [], {'display': 'none'}
 
 @app.callback(
@@ -923,11 +1042,13 @@ def update_gene_filter_from_sankey(clickData, current_genes):
 @app.callback(
     Output('stored_arules_df', 'data'),
     [Input('tabCo_score_threshold', 'value'),
-     Input('tabCo_support_threshold', 'value')]
+     Input('tabCo_support_threshold', 'value'),
+     Input('filtered_data_store', 'data')]  # Use filtered data if provided]
 )
-def update_arules_data(tabCo_score_threshold, tabCo_support_threshold):
+def update_arules_data(tabCo_score_threshold, tabCo_support_threshold, filtered_data):
+    graph_data = pd.DataFrame(filtered_data) if filtered_data else data
     # Generate the association rules dataframe
-    allq_arules_df = make_arules(data, tabCo_score_threshold, tabCo_support_threshold)
+    allq_arules_df = make_arules(graph_data, tabCo_score_threshold, tabCo_support_threshold)
     
     # Store the dataframe in a dictionary format to store in dcc.Store
     return allq_arules_df.to_dict('records')
@@ -1051,7 +1172,8 @@ def store_clicked_tf_data(n_clicks, clickData, stored_arules_df):
      Output('join_type', 'value'),
      Output('score_threshold', 'value')],
     [Input('stored_tf_data', 'data')],
-    [State('tabCo_score_threshold', 'value')]
+    [State('tabCo_score_threshold', 'value')],
+    prevent_initial_call=True
 )
 def update_tf_tab_selectors(stored_tf_data, tabCo_score_threshold):
     if not stored_tf_data:
@@ -1077,17 +1199,21 @@ def update_tf_tab_selectors(stored_tf_data, tabCo_score_threshold):
         Input('tabCo_peak_adj_lift_threshold', 'value'),
         Input('tabCo_time_filter', 'value'),
         Input('tabCo_direction_filter', 'value'),
+        Input('filtered_data_store', 'data'),  # Use filtered data if provided
         Input('tf_co_regulation_graph', 'clickData')
     ]
 )
-def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter, clickData):
+def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter, filtered_data, clickData):
+    # Use the stored filtered data if available, otherwise use the original data
+    graph_data = pd.DataFrame(filtered_data) if filtered_data else data
+
     tabCo_direction_filter = tabCo_direction_filter if tabCo_direction_filter else ["pos", "neg"]
     tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else [0,1,2,3,4,5,6,7,8,9]
     # Convert the stored data back to a DataFrame
     allq_arules_df = pd.DataFrame(stored_arules_df)
     
     # Generate the graph using the existing logic
-    fig = generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter)
+    fig = generate_tf_co_regulation_graph(graph_data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter)
 
     if (clickData is not None):
         # Highlight the clicked node and its connected edges and nodes
