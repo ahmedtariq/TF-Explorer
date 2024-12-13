@@ -1346,7 +1346,7 @@ def make_arules(data, tabCo_score_threshold):
     df = pd.DataFrame(te_ary, columns=te.columns_)
     frequent_itemsets = apriori(df, min_support= 5 / len(data["gene"].unique()), use_colnames=True)
 
-    perGene_ass_rules_df = association_rules(frequent_itemsets, metric="lift", min_threshold=2)
+    perGene_ass_rules_df = association_rules(frequent_itemsets, metric="lift", min_threshold=1.5)
 
     # Filter rules with 1 antecedents & 1 consequents
     perGene_ass_rules_df["antecedents_len"] = perGene_ass_rules_df.apply(lambda x: len(x["antecedents"]),axis=1)
