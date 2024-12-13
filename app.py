@@ -225,6 +225,7 @@ app.layout = html.Div([
                             page_action='native',
                             filter_action='native',
                             sort_action='native',
+                            virtualization=True,  # Only render visible rows
                             page_size=10,
                             tooltip_header={
                                 col: {
@@ -390,19 +391,19 @@ app.layout = html.Div([
                         value=1,
                         marks={(i+0.00001)/10: {"label": str(round((i+0.00001)/10, 1))} for i in range(0, 200, 5) if i/10 < data['score'].abs().max()},
                         tooltip={"placement": "bottom", "always_visible": True}
-                    ),
+                    )
+                ], style={'width': '50%', 'margin': '10px auto'}),
+                html.Div([
                     html.Label("Minimum Support Threshold:"),
                     dcc.Slider(
                         id='tabCo_support_threshold',
-                        min=0.01,
-                        max=1,
-                        step=0.01,
-                        value=0.1,  # Default value for support threshold
-                        marks={i/100: {"label": str(i/100)} for i in range(0, 101, 10)},
+                        min=5,
+                        max=20,
+                        step=1,
+                        value=10,  # Default value for support threshold
+                        marks={i: {"label": str(i)} for i in range(5, 21, 1)},
                         tooltip={"placement": "bottom", "always_visible": True}
                     ),
-                ], style={'width': '50%', 'margin': '10px auto'}),
-                html.Div([
                     html.Label("Minimum Adjusted Lift Threshold:"),
                     dcc.Slider(
                         id='tabCo_peak_adj_lift_threshold',
@@ -1042,13 +1043,12 @@ def update_gene_filter_from_sankey(clickData, current_genes):
 @app.callback(
     Output('stored_arules_df', 'data'),
     [Input('tabCo_score_threshold', 'value'),
-     Input('tabCo_support_threshold', 'value'),
      Input('filtered_data_store', 'data')]  # Use filtered data if provided]
 )
-def update_arules_data(tabCo_score_threshold, tabCo_support_threshold, filtered_data):
+def update_arules_data(tabCo_score_threshold, filtered_data):
     graph_data = pd.DataFrame(filtered_data) if filtered_data else data
     # Generate the association rules dataframe
-    allq_arules_df = make_arules(graph_data, tabCo_score_threshold, tabCo_support_threshold)
+    allq_arules_df = make_arules(graph_data, tabCo_score_threshold)
     
     # Store the dataframe in a dictionary format to store in dcc.Store
     return allq_arules_df.to_dict('records')
@@ -1197,13 +1197,14 @@ def update_tf_tab_selectors(stored_tf_data, tabCo_score_threshold):
     [
         Input('stored_arules_df', 'data'),  # Use the stored arules data as input
         Input('tabCo_peak_adj_lift_threshold', 'value'),
+        Input('tabCo_support_threshold', 'value'),
         Input('tabCo_time_filter', 'value'),
         Input('tabCo_direction_filter', 'value'),
         Input('filtered_data_store', 'data'),  # Use filtered data if provided
         Input('tf_co_regulation_graph', 'clickData')
     ]
 )
-def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter, filtered_data, clickData):
+def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter, filtered_data, clickData):
     # Use the stored filtered data if available, otherwise use the original data
     graph_data = pd.DataFrame(filtered_data) if filtered_data else data
 
@@ -1213,7 +1214,7 @@ def update_tf_co_regulation_graph(stored_arules_df, tabCo_peak_adj_lift_threshol
     allq_arules_df = pd.DataFrame(stored_arules_df)
     
     # Generate the graph using the existing logic
-    fig = generate_tf_co_regulation_graph(graph_data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter)
+    fig = generate_tf_co_regulation_graph(graph_data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter)
 
     if (clickData is not None):
         # Highlight the clicked node and its connected edges and nodes
@@ -1332,7 +1333,7 @@ def update_gene_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter
     return sankey_fig, distance_density_fig
 
 
-def make_arules(data, tabCo_score_threshold, tabCo_support_threshold):
+def make_arules(data, tabCo_score_threshold):
     # Apply the score threshold filter
     data = data[data["score"].abs() > tabCo_score_threshold]
 
@@ -1343,9 +1344,9 @@ def make_arules(data, tabCo_score_threshold, tabCo_support_threshold):
     te = TransactionEncoder()
     te_ary = te.fit(perGene_itemSet_df).transform(perGene_itemSet_df)
     df = pd.DataFrame(te_ary, columns=te.columns_)
-    frequent_itemsets = apriori(df, min_support=tabCo_support_threshold, use_colnames=True)
+    frequent_itemsets = apriori(df, min_support= 5 / len(data["gene"].unique()), use_colnames=True)
 
-    perGene_ass_rules_df = association_rules(frequent_itemsets, metric="lift", min_threshold=1.5)
+    perGene_ass_rules_df = association_rules(frequent_itemsets, metric="lift", min_threshold=2)
 
     # Filter rules with 1 antecedents & 1 consequents
     perGene_ass_rules_df["antecedents_len"] = perGene_ass_rules_df.apply(lambda x: len(x["antecedents"]),axis=1)
@@ -1387,15 +1388,19 @@ def make_arules(data, tabCo_score_threshold, tabCo_support_threshold):
 
     perGene_ass_rules_df["TF_peak_jaccard"] = perGene_ass_rules_df.apply(calc_jaccard_apply,axis=1)
     perGene_ass_rules_df = perGene_ass_rules_df.assign(peak_adj_lift = lambda x: (1 - x["TF_peak_jaccard"]) * x["lift"])
+
+    # convert support into counts
+    perGene_ass_rules_df = perGene_ass_rules_df.assign(support = lambda x: (x["support"] *  len(data["gene"].unique())).astype(int))
     
     return perGene_ass_rules_df
 
 
-def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_time_filter, tabCo_direction_filter):
+def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_adj_lift_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter):
 
 
     allq_arules_df = allq_arules_df[
         (allq_arules_df['peak_adj_lift'] >= tabCo_peak_adj_lift_threshold) &
+        (allq_arules_df['support'] >= tabCo_support_threshold) &
         (allq_arules_df['antecedents_time'].astype(int).isin(tabCo_time_filter)) &
         (allq_arules_df['consequents_time'].astype(int).isin(tabCo_time_filter)) &
         (allq_arules_df['antecedents_dir'].isin(tabCo_direction_filter)) &
@@ -1462,7 +1467,7 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_peak_
                     same_direction = row["antecedents_dir"] == row["consequents_dir"], TF_peak_jaccard = row["TF_peak_jaccard"], peak_adj_lift = row["peak_adj_lift"])
 
     # Get edge attributes
-    g_edge_tooltips = ["{}--{}<br>Support: {:.4f}<br>Confidence: {:.4f}<br>Lift: {:.4f}<br>peak_jaccard: {:.4f}".format(edge['antecedent'],edge['consequent'],edge['support'], edge['confidence'], edge['lift'], edge['TF_peak_jaccard']) for edge in graph.es]
+    g_edge_tooltips = ["{}--{}<br>Support: {:d}<br>Confidence: {:.4f}<br>Lift: {:.4f}<br>peak_jaccard: {:.4f}".format(edge['antecedent'],edge['consequent'],edge['support'], edge['confidence'], edge['lift'], edge['TF_peak_jaccard']) for edge in graph.es]
     g_color = ["green" if edge["same_direction"] else "red"  for edge in graph.es]
     g_width = [round(edge["peak_adj_lift"],1) for edge in graph.es]
 
