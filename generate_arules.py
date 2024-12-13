@@ -19,7 +19,7 @@ else:
     print("[INFO] Generating association rules...")
     support_threshold = 5  # Adjust threshold as needed
     score_threshold = 0
-    allq_arules_df = make_arules(data, score_threshold=score_threshold, support_threshold=support_threshold)
+    allq_arules_df = make_arules(data, score_threshold=score_threshold)
 
     # Save to CSV
     allq_arules_df.to_csv(output_file, index=False)
