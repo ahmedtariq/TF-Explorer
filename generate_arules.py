@@ -14,12 +14,11 @@ else:
     # Load dataset
     print("[INFO] Loading dataset...")
     data = pd.read_csv(file_path)
+    data["TF_motif"] = data["TF_motif"].str.split('::',expand=True)[0].str.split('(',expand=True)[0].str.upper()
 
     # Generate association rules
     print("[INFO] Generating association rules...")
-    support_threshold = 5  # Adjust threshold as needed
-    score_threshold = 0
-    allq_arules_df = make_arules(data, score_threshold)
+    allq_arules_df = make_arules(data)
 
     # Save to CSV
     allq_arules_df.to_csv(output_file, index=False)
