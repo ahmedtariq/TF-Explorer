@@ -388,7 +388,7 @@ app.layout = html.Div([
                         min=5,
                         max=20,
                         step=1,
-                        value=5,  # Default value for support threshold
+                        value=6,  # Default value for support threshold
                         marks={i: {"label": str(i)} for i in range(5, 21, 1)},
                         tooltip={"placement": "bottom", "always_visible": True}
                     ),
@@ -398,7 +398,7 @@ app.layout = html.Div([
                         min=1.5,
                         max=5,
                         step=0.1,
-                        value=1.5,  # Default value for support threshold
+                        value=2,  # Default value for Lift threshold
                         marks={i: {"label": str(i/10)} for i in range(15, 51, 5)},
                         tooltip={"placement": "bottom", "always_visible": True}
                     ),
