@@ -1064,25 +1064,10 @@ def update_arules_data(filtered_data):
 
 
 
-@app.callback(
-    [Output('gene-card-button', 'style'),
-     Output('analyse-button', 'style'),
-     Output('button-title', 'children'),
-     Output('gene-card-link', 'href'),
-     Output('gene-card-link', 'style')],
-    [Input('tf_co_regulation_graph', 'clickData')],
-    [State('gene-card-button', 'style'),
-     State('analyse-button', 'style'),
-     State('gene-card-link', 'style')]
-)
-def display_buttons_on_click(clickData, gene_button_style, analyse_button_style, gene_link_style):
+def display_buttons_on_click(clickData, allq_arules_df):
     try:
-        if clickData is None:
-            return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
-
         clicked_node = clickData['points'][0]['hovertext'].split("<br>")[0]  # Assuming the clicked node's text is the gene name or TF motif
-
-        if '--' not in clicked_node:  # Example condition to decide if it's a gene node
+        if ('--' not in clicked_node):  # Example condition to decide if it's a gene node in a rules graph
             button_title = f"{clicked_node}:  "
             modern_button_style = {
                 'display': 'inline-block',
@@ -1104,23 +1089,16 @@ def display_buttons_on_click(clickData, gene_button_style, analyse_button_style,
             gene_card_url = f"https://www.genecards.org/cgi-bin/carddisp.pl?gene={clicked_node.split('-')[0]}"
             
             return gene_button_style, analyse_button_style, button_title, gene_card_url, gene_link_style
+        else:
+            return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
 
     except Exception as e:
         if e != 'hovertext':
-            print(f"Error highlighting in Co-rgulation: {e}")    
-    return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
+            print(f"Error display bottons in Co-rgulation: {e}")    
+        return {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}
 
 # getting the click data and storing it
-@app.callback(
-    Output('stored_tf_data', 'data'),
-    [Input('analyse-button', 'n_clicks')],
-    [State('tf_co_regulation_graph', 'clickData'),
-     State('stored_arules_df', 'data')]
-)
-def store_clicked_tf_data(n_clicks, clickData, stored_arules_df):
-    if n_clicks is None or clickData is None:
-        return {}
-    
+def store_clicked_tf_data(clickData, stored_arules_df):
     clicked_node = clickData['points'][0]['hovertext'].split('<br>')
     
     tf_motif = clicked_node[0].split("<br>")[0]
@@ -1158,10 +1136,11 @@ def store_clicked_tf_data(n_clicks, clickData, stored_arules_df):
      Output('right_direction_filter', 'value'),
      Output('right_time_filter', 'value'),
      Output('join_type', 'value')],
-    [Input('stored_tf_data', 'data')],
+    [Input('analyse-button', 'n_clicks')],
+    State('stored_tf_data', 'data'),
     prevent_initial_call=True
 )
-def update_tf_tab_selectors(stored_tf_data):
+def update_tf_tab_selectors(n_clicks, stored_tf_data):
     if not stored_tf_data:
         return [dash.no_update] * 8
     switch_to_tab = 'tabTF'
@@ -1177,8 +1156,30 @@ def update_tf_tab_selectors(stored_tf_data):
     )
 
 
+def is_clicked_node_in_graph(clickData, allq_arules_df):
+    try:
+        clicked_node_hovertext = clickData['points'][0]['hovertext']
+        # converting hover text to _ speprated string
+        def hover_to_str(hovertext):
+            return "_".join(hovertext.replace("time ","").split("<br>")[:-1])
+        
+        clicked_node_dir_time = hover_to_str(clicked_node_hovertext)
+        # Identify if clicked node is in filtered rules
+        all_nodes = set(allq_arules_df['antecedents']).union(set(allq_arules_df['consequents'])) 
+        return clicked_node_dir_time in all_nodes
+    except:
+        return False
+
 @app.callback(
-    Output('tf_co_regulation_graph', 'figure'),
+    [
+        Output('tf_co_regulation_graph', 'figure'),
+        Output('gene-card-button', 'style'),
+        Output('analyse-button', 'style'),
+        Output('button-title', 'children'),
+        Output('gene-card-link', 'href'),
+        Output('gene-card-link', 'style'),
+        Output('stored_tf_data', 'data')
+     ],
     [
         Input('stored_arules_df', 'data'),  # Use the stored arules data as input
         Input('tabCo_lift_threshold', 'value'),
@@ -1190,23 +1191,35 @@ def update_tf_tab_selectors(stored_tf_data):
     ],
     State('filtered_data_store', 'data')  # Use filtered data if provided
 )
-def update_tf_co_regulation_graph(stored_arules_df, tabCo_lift_threshold, tabCo_peak_jaccard_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter, filtered_data, clickData):
+def update_tf_co_regulation_graph(stored_arules_df, tabCo_lift_threshold, tabCo_peak_jaccard_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter, clickData, filtered_data):
     # Use the stored filtered data if available, otherwise use the original data
     graph_data = pd.DataFrame(filtered_data) if filtered_data else data
 
     tabCo_direction_filter = tabCo_direction_filter if tabCo_direction_filter else ["pos", "neg"]
     tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else [0,1,2,3,4,5,6,7,8,9]
-    # Convert the stored data back to a DataFrame
+    # Convert the stored data back to a DataFrame and filter it
     allq_arules_df = pd.DataFrame(stored_arules_df)
+    allq_arules_df = allq_arules_df[
+        (allq_arules_df['TF_peak_jaccard'] <= tabCo_peak_jaccard_threshold) &
+        (allq_arules_df['support'] >= tabCo_support_threshold) &
+        (allq_arules_df['lift'] >= tabCo_lift_threshold) &
+        (allq_arules_df['antecedents_time'].astype(int).isin(tabCo_time_filter)) &
+        (allq_arules_df['consequents_time'].astype(int).isin(tabCo_time_filter)) &
+        (allq_arules_df['antecedents_dir'].isin(tabCo_direction_filter)) &
+        (allq_arules_df['consequents_dir'].isin(tabCo_direction_filter))
+    ]
     
     # Generate the graph using the existing logic
-    fig = generate_tf_co_regulation_graph(graph_data, tfcluster, allq_arules_df, tabCo_lift_threshold, tabCo_peak_jaccard_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter)
+    fig = generate_tf_co_regulation_graph(graph_data, tfcluster, allq_arules_df)
+    buttons = ({'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'})
+    stored_tf_data = {}
 
-    if (clickData is not None):
+    if (clickData is not None) & is_clicked_node_in_graph(clickData, allq_arules_df):
         # Highlight the clicked node and its connected edges and nodes
-        fig = highlight_node_and_edges(fig, clickData, allq_arules_df, tabCo_lift_threshold,  tabCo_peak_jaccard_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter)
-
-    return fig
+        fig = highlight_node_and_edges(fig, clickData, allq_arules_df)
+        buttons = display_buttons_on_click(clickData, allq_arules_df)
+        stored_tf_data = store_clicked_tf_data(clickData, allq_arules_df)
+    return fig, *buttons, stored_tf_data
 
 # Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
 @app.callback(
@@ -1382,18 +1395,7 @@ def make_arules(data):
     return perGene_ass_rules_df
 
 
-def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_lift_threshold, tabCo_peak_jaccard_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter):
-
-
-    allq_arules_df = allq_arules_df[
-        (allq_arules_df['TF_peak_jaccard'] <= tabCo_peak_jaccard_threshold) &
-        (allq_arules_df['support'] >= tabCo_support_threshold) &
-        (allq_arules_df['lift'] >= tabCo_lift_threshold) &
-        (allq_arules_df['antecedents_time'].astype(int).isin(tabCo_time_filter)) &
-        (allq_arules_df['consequents_time'].astype(int).isin(tabCo_time_filter)) &
-        (allq_arules_df['antecedents_dir'].isin(tabCo_direction_filter)) &
-        (allq_arules_df['consequents_dir'].isin(tabCo_direction_filter))
-    ]
+def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df):
 
     # Generate the igraph network visualization 
     # Note: We will create the plot and return it
@@ -1546,17 +1548,8 @@ def generate_tf_co_regulation_graph(data, tfcluster, allq_arules_df, tabCo_lift_
     # Returning the figure
     return fig
 
-def highlight_node_and_edges(fig, clickData, allq_arules_df, tabCo_lift_threshold,  tabCo_peak_jaccard_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter):
+def highlight_node_and_edges(fig, clickData, allq_arules_df):
     try:
-        allq_arules_df = allq_arules_df[
-        (allq_arules_df['TF_peak_jaccard'] <= tabCo_peak_jaccard_threshold) &
-        (allq_arules_df['support'] >= tabCo_support_threshold) &
-        (allq_arules_df['lift'] >= tabCo_lift_threshold) &
-        (allq_arules_df['antecedents_time'].astype(int).isin(tabCo_time_filter)) &
-        (allq_arules_df['consequents_time'].astype(int).isin(tabCo_time_filter)) &
-        (allq_arules_df['antecedents_dir'].isin(tabCo_direction_filter)) &
-        (allq_arules_df['consequents_dir'].isin(tabCo_direction_filter))
-        ]
         clicked_node_hovertext = clickData['points'][0]['hovertext']
         # converting hover text to _ speprated string
         def hover_to_str(hovertext):
