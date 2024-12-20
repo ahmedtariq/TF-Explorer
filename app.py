@@ -16,6 +16,28 @@ import gseapy as gp
 import os
 
 pd.set_option('future.no_silent_downcasting', True)
+# Create an empty figure
+empty_fig = go.Figure()
+
+# Add a centered annotation as a message to the user
+empty_fig.add_annotation(
+    text="No Transcription Factor (TF) to display the visualization.",
+    x=0.5,  # Center the text horizontally
+    y=0.5,  # Center the text vertically
+    showarrow=False,  # No arrow
+    font=dict(size=16, color="black"),  # Customize font size and color
+    xref="paper",  # Use the paper coordinate system for x
+    yref="paper",  # Use the paper coordinate system for y
+    align="center"  # Center-align the text
+)
+
+# Set the background color to white
+empty_fig.update_layout(
+    plot_bgcolor="white",  # Background of the plotting area
+    paper_bgcolor="white",  # Background of the entire figure
+    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),  # Remove x-axis elements
+    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)   # Remove y-axis elements
+)
 
 # Load the dataset
 file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap_lag.csv')
@@ -390,7 +412,7 @@ app.layout = html.Div([
                         min=5,
                         max=20,
                         step=1,
-                        value=6,  # Default value for support threshold
+                        value=10,  # Default value for support threshold
                         marks={i: {"label": str(i)} for i in range(5, 21, 1)},
                         tooltip={"placement": "bottom", "always_visible": True}
                     ),
@@ -1079,34 +1101,37 @@ def is_clicked_node_in_graph(clickData, allq_arules_df):
     State('filtered_data_store', 'data')  # Use filtered data if provided
 )
 def update_tf_co_regulation_graph(stored_arules_df, tabCo_lift_threshold, tabCo_peak_jaccard_threshold, tabCo_support_threshold, tabCo_time_filter, tabCo_direction_filter, clickData, filtered_data):
-    # Use the stored filtered data if available, otherwise use the original data
-    graph_data = pd.DataFrame(filtered_data) if filtered_data else data
+    try:
+        # Use the stored filtered data if available, otherwise use the original data
+        graph_data = pd.DataFrame(filtered_data) if filtered_data else data
 
-    tabCo_direction_filter = tabCo_direction_filter if tabCo_direction_filter else ["pos", "neg"]
-    tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else [0,1,2,3,4,5,6,7,8,9]
-    # Convert the stored data back to a DataFrame and filter it
-    allq_arules_df = pd.DataFrame(stored_arules_df)
-    allq_arules_df = allq_arules_df[
-        (allq_arules_df['TF_peak_jaccard'] <= tabCo_peak_jaccard_threshold) &
-        (allq_arules_df['support'] >= tabCo_support_threshold) &
-        (allq_arules_df['lift'] >= tabCo_lift_threshold) &
-        (allq_arules_df['antecedents_time'].astype(int).isin(tabCo_time_filter)) &
-        (allq_arules_df['consequents_time'].astype(int).isin(tabCo_time_filter)) &
-        (allq_arules_df['antecedents_dir'].isin(tabCo_direction_filter)) &
-        (allq_arules_df['consequents_dir'].isin(tabCo_direction_filter))
-    ]
-    
-    # Generate the graph using the existing logic
-    fig = generate_tf_co_regulation_graph(graph_data, tfcluster, allq_arules_df)
-    buttons = ({'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'})
-    stored_tf_data = {}
+        tabCo_direction_filter = tabCo_direction_filter if tabCo_direction_filter else ["pos", "neg"]
+        tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else [0,1,2,3,4,5,6,7,8,9]
+        # Convert the stored data back to a DataFrame and filter it
+        allq_arules_df = pd.DataFrame(stored_arules_df)
+        allq_arules_df = allq_arules_df[
+            (allq_arules_df['TF_peak_jaccard'] <= tabCo_peak_jaccard_threshold) &
+            (allq_arules_df['support'] >= tabCo_support_threshold) &
+            (allq_arules_df['lift'] >= tabCo_lift_threshold) &
+            (allq_arules_df['antecedents_time'].astype(int).isin(tabCo_time_filter)) &
+            (allq_arules_df['consequents_time'].astype(int).isin(tabCo_time_filter)) &
+            (allq_arules_df['antecedents_dir'].isin(tabCo_direction_filter)) &
+            (allq_arules_df['consequents_dir'].isin(tabCo_direction_filter))
+        ]
+        
+        # Generate the graph using the existing logic
+        fig = generate_tf_co_regulation_graph(graph_data, tfcluster, allq_arules_df)
+        buttons = ({'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'})
+        stored_tf_data = {}
 
-    if (clickData is not None) & is_clicked_node_in_graph(clickData, allq_arules_df):
-        # Highlight the clicked node and its connected edges and nodes
-        fig = highlight_node_and_edges(fig, clickData, allq_arules_df)
-        buttons = display_buttons_on_click(clickData, allq_arules_df)
-        stored_tf_data = store_clicked_tf_data(clickData, allq_arules_df)
-    return fig, *buttons, stored_tf_data
+        if (clickData is not None) & is_clicked_node_in_graph(clickData, allq_arules_df):
+            # Highlight the clicked node and its connected edges and nodes
+            fig = highlight_node_and_edges(fig, clickData, allq_arules_df)
+            buttons = display_buttons_on_click(clickData, allq_arules_df)
+            stored_tf_data = store_clicked_tf_data(clickData, allq_arules_df)
+        return fig, *buttons, stored_tf_data
+    except:
+        return empty_fig, {'display': 'none'}, {'display': 'none'}, '', '', {'display': 'none'}, {}
 
 
 def make_arules(data):
@@ -1505,7 +1530,7 @@ def filter_by_table_rows(table_data, data, score_threshold):
 )
 def update_tf_graphs(left_table,  right_table, score_threshold, join_type, gene_set_filter, background_choice):
     if pd.DataFrame(left_table or {}).replace({"": np.nan},).dropna(how="all").empty:
-        return go.Figure(), go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
+        return empty_fig, empty_fig, empty_fig, empty_fig  # Return empty figures if no left TF_motif is selected
 
     left_tf_motif_filter = list(pd.DataFrame(left_table)["TF_motif"].unique()) if not pd.DataFrame(left_table or {}).replace({"": np.nan}).dropna(how="all").empty else []
     right_tf_motif_filter = list(pd.DataFrame(right_table)["TF_motif"].unique()) if not pd.DataFrame(right_table or {}).replace({"": np.nan}).dropna(how="all").empty else []
