@@ -15,6 +15,8 @@ import colorcet as cc
 import gseapy as gp
 import os
 
+pd.set_option('future.no_silent_downcasting', True)
+
 # Load the dataset
 file_path = os.getenv('FILE_PATH', 'q_dir_motif_gene_shap_lag.csv')
 data = pd.read_csv(file_path)
@@ -473,56 +475,62 @@ app.layout = html.Div([
         dcc.Tab(value='tabTF',label='Transcription Factor', children=[
             html.Div([
                 html.Div([
-                    html.Label("Select left TF_motif:"),
-                    dcc.Dropdown(
-                        id='left_tf_motif_filter',
-                        options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
-                        multi=True
-                    ),
-                    html.Label("Select Direction:"),
-                    dcc.Dropdown(
-                        id='left_direction_filter',
-                        options=[],
-                        multi=True,
-                        value=['pos', 'neg']
-                    ),
-                    html.Label("Select Time:"),
-                    dcc.Dropdown(
-                        id='left_time_filter',
-                        options=[],
-                        multi=True,
-                        disabled=True
-                    ),
-                ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                    html.Div([
+                        html.Label("Left TF Filters:"),
+                        dash_table.DataTable(
+                            id='left_filters_table',
+                            columns=[
+                                {'name': 'TF_motif', 'id': 'TF_motif', 'presentation': 'dropdown'},
+                                {'name': 'time', 'id': 'time', 'presentation': 'dropdown'},
+                                {'name': 'direction', 'id': 'direction', 'presentation': 'dropdown'}
+                            ],
+                            editable=True,
+                            row_deletable=True,
+                            style_table={'overflowX': 'auto', 'height': '200px'},
+                            dropdown={
+                                'TF_motif': {
+                                    'options': [{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()]
+                                }
+                            },
+                            data=[
+                                {'TF_motif': "", 'time': "", 'direction': ""}  # Initial empty row
+                            ]
+                        ),
+                        html.Button("Add Row", id="add_left_row", n_clicks=0)
+                    ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top', 'overflow': 'visible'}),
+                    html.Div([
+                        html.Label("Right TF Filters:"),
+                        dash_table.DataTable(
+                            id='right_filters_table',
+                            columns=[
+                                {'name': 'TF_motif', 'id': 'TF_motif', 'presentation': 'dropdown'},
+                                {'name': 'time', 'id': 'time', 'presentation': 'dropdown'},
+                                {'name': 'direction', 'id': 'direction', 'presentation': 'dropdown'}
+                            ],
+                            editable=True,
+                            row_deletable=True,
+                            style_table={'overflowX': 'auto', 'height': '200px'},
+                            dropdown={
+                                'TF_motif': {
+                                    'options': [{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()]
+                                }
+                            },
+                            data=[
+                                {'TF_motif': "", 'time': "", 'direction': ""}  # Initial empty row
+                            ]
+                        ),
+                        html.Button("Add Row", id="add_right_row", n_clicks=0),
+                    ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top', 'overflow': 'visible'}),
+                ], style={'width': '80%', 'margin': '0 auto', 'display': 'flex', 'justifyContent': 'space-between', 'height': '250px', 'overflow': 'visible'}),
                 html.Div([
-                    html.Label("Select right TF_motif:"),
-                    dcc.Dropdown(
-                        id='right_tf_motif_filter',
-                        options=[{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()],
-                        multi=True
-                    ),
-                    html.Label("Select Direction:"),
-                    dcc.Dropdown(
-                        id='right_direction_filter',
-                        options=[],
-                        multi=True,
-                        value=['pos', 'neg']
-                    ),
-                    html.Label("Select Time:"),
-                    dcc.Dropdown(
-                        id='right_time_filter',
-                        options=[],
-                        multi=True,
-                        disabled=True
-                    ),
                     html.Label("Select right and left join mode:"),
                     dcc.RadioItems(
                         id='join_type',
                         options=['inner', 'outer'],
                         value='outer',
-                        inline=True),
-                ], style={'width': '45%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-            ], style={'width': '80%', 'margin': '0 auto', 'display': 'flex', 'justifyContent': 'space-between'}),
+                        inline=True)
+                ], style={'width': '30%', 'margin': '20px auto', 'display': 'flex', 'justifyContent': 'center'})
+            ]),
             html.Div([
                 html.Label("Minimum Score Threshold:"),
                 dcc.Slider(
@@ -917,127 +925,8 @@ def download_pivot_table(n_clicks, pivot_data, pivot_columns):
         return dcc.send_data_frame(pivot_df.to_csv, "pivot_table.csv")
     return None
 
-# Helper function to blend TF_motif color with time greyscale
-def blend_colors(tf_color, time_color, alpha=0.3):
-    tf_rgb = np.array(tf_color[:3] + (0.4,))
-    time_rgb = np.array(time_color[:3] + (0.4,))
-    blended_rgb = (1 - alpha) * tf_rgb + alpha * time_rgb
-    return "rgba" + str(tuple(blended_rgb))
 
-# Callbacks to update filters based on selected TF_motifs and directions
-@app.callback(
-    [Output('left_direction_filter', 'options'),
-     Output('left_direction_filter', 'disabled')],
-    [Input('left_tf_motif_filter', 'value')]
-)
-def update_left_direction_filter(selected_tf_motifs):
-    if not selected_tf_motifs:
-        return [], True
-
-    filtered_data = data[data['TF_motif'].isin(selected_tf_motifs)]
-    directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
-
-    return directions, False
-
-@app.callback(
-    [Output('right_direction_filter', 'options'),
-     Output('right_direction_filter', 'disabled')],
-    [Input('right_tf_motif_filter', 'value')]
-)
-def update_right_direction_filter(selected_tf_motifs):
-    if not selected_tf_motifs:
-        return [], True
-
-    filtered_data = data[data['TF_motif'].isin(selected_tf_motifs)]
-    directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
-
-    return directions, False
-
-@app.callback(
-    [Output('left_time_filter', 'options'),
-     Output('left_time_filter', 'disabled')],
-    [Input('left_tf_motif_filter', 'value'),
-     Input('left_direction_filter', 'value')]
-)
-def update_left_time_filter(selected_tf_motifs, selected_directions):
-    if not selected_tf_motifs or not selected_directions:
-        return [], True
-
-    filtered_data = data[(data['TF_motif'].isin(selected_tf_motifs)) & (data['direction'].isin(selected_directions))]
-    times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
-
-    return times, False
-
-@app.callback(
-    [Output('right_time_filter', 'options'),
-     Output('right_time_filter', 'disabled')],
-    [Input('right_tf_motif_filter', 'value'),
-     Input('right_direction_filter', 'value')]
-)
-def update_right_time_filter(selected_tf_motifs, selected_directions):
-    if not selected_tf_motifs or not selected_directions:
-        return [], True
-
-    filtered_data = data[(data['TF_motif'].isin(selected_tf_motifs)) & (data['direction'].isin(selected_directions))]
-    times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
-
-    return times, False
-
-# Callbacks to update Gene filters based on selected TF_motifs and directions
-
-@app.callback(
-    [Output('tabG_direction_filter', 'options'),
-     Output('tabG_direction_filter', 'value'),
-     Output('tabG_direction_filter', 'disabled')],
-    [Input('tabG_gene_filter', 'value')]
-)
-def update_tabG_direction_filter(selected_genes):
-    if not selected_genes:
-        return [], ['pos', 'neg'], True
-
-    filtered_data = data[data['gene'].isin(selected_genes)]
-    directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
-
-    return directions, ['pos', 'neg'], False
-
-@app.callback(
-    [Output('tabG_time_filter', 'options'),
-     Output('tabG_time_filter', 'disabled')],
-    [Input('tabG_gene_filter', 'value'),
-     Input('tabG_direction_filter', 'value')]
-)
-def update_tabG_time_filter(selected_genes, selected_directions):
-    if not selected_genes or not selected_directions:
-        return [], True
-
-    filtered_data = data[(data['gene'].isin(selected_genes)) & (data['direction'].isin(selected_directions))]
-    times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
-
-    return times, False
-
-# Callback to update the Gene filter in the Gene tab based on clicks on the Sankey diagram
-@app.callback(
-    Output('tabG_gene_filter', 'value'),
-    [Input('sankey_diagram', 'clickData')],
-    [State('tabG_gene_filter', 'value')]
-)
-def update_gene_filter_from_sankey(clickData, current_genes):
-    if clickData is None:
-        return current_genes
-
-    clicked_node = clickData['points'][0]['label']
-    if ' ' in clicked_node:  # This condition may need to be adapted based on your node labels
-        return current_genes  # Not a gene node, return current filter without changes
-
-    # If clicked_node is a gene, update the gene filter
-    if current_genes is None:
-        current_genes = []
-
-    if clicked_node not in current_genes:
-        current_genes.append(clicked_node)
-
-    return current_genes
-
+# Co-regulation Tab
 
 @app.callback(
     Output('stored_arules_df', 'data'),
@@ -1107,34 +996,30 @@ def store_clicked_tf_data(clickData, stored_arules_df):
     
     # Identify connected nodes
     df = pd.DataFrame(stored_arules_df)
-    connected_tf_motifs = list(set(df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_TF_motif'].tolist() +
-                            df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_TF_motif'].tolist()))
-    connected_directions = list(set(df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_dir'].tolist() +
-                            df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_dir'].tolist()))
-    connected_times = list(set(df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_time'].astype(int).tolist() + 
-                        df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_time'].astype(int).tolist()))
+    connected_tf_motifs = df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_TF_motif'].tolist() + \
+                            df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_TF_motif'].tolist()
+    connected_directions = df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_dir'].tolist() + \
+                            df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_dir'].tolist()
+    connected_times = df.loc[df['antecedents'] == f'{tf_motif}_{direction}_{time}']['consequents_time'].astype(int).tolist() + \
+                        df.loc[df['consequents'] == f'{tf_motif}_{direction}_{time}']['antecedents_time'].astype(int).tolist()
 
     # make join inner
     join_type = "inner"
     
     return {
-        'left_tf': tf_motif,
-        'left_direction': direction,
-        'left_time': time,
-        'right_tf': connected_tf_motifs,
-        'right_direction': connected_directions,
-        'right_time': connected_times,
+        'left_tf': list([tf_motif]),
+        'left_direction': list([direction]),
+        'left_time': list([time]),
+        'right_tf': list(connected_tf_motifs),
+        'right_direction': list(connected_directions),
+        'right_time': list(connected_times),
         'join_type' : join_type
     }
 
 @app.callback(
     [Output("tabs", "value"),
-     Output('left_tf_motif_filter', 'value'),
-     Output('left_direction_filter', 'value'),
-     Output('left_time_filter', 'value'),
-     Output('right_tf_motif_filter', 'value'),
-     Output('right_direction_filter', 'value'),
-     Output('right_time_filter', 'value'),
+     Output('left_filters_table', 'data'),
+     Output('right_filters_table', 'data'),
      Output('join_type', 'value')],
     [Input('analyse-button', 'n_clicks')],
     State('stored_tf_data', 'data'),
@@ -1142,16 +1027,18 @@ def store_clicked_tf_data(clickData, stored_arules_df):
 )
 def update_tf_tab_selectors(n_clicks, stored_tf_data):
     if not stored_tf_data:
-        return [dash.no_update] * 8
+        return [dash.no_update] * 4
     switch_to_tab = 'tabTF'
+    left_stored_tf_data_df = pd.DataFrame({k: v for k, v in stored_tf_data.items() if "left" in k})
+    right_stored_tf_data_df = pd.DataFrame({k: v for k, v in stored_tf_data.items() if "right" in k})
+
+    left_stored_tf_data_df = left_stored_tf_data_df.loc[:,['left_tf',"left_time", "left_direction"]].rename({'left_tf': "TF_motif","left_time": "time", "left_direction": "direction"} ,axis=1).drop_duplicates().astype(str)
+    right_stored_tf_data_df = right_stored_tf_data_df.loc[:,['right_tf',"right_time", "right_direction"]].rename({'right_tf': "TF_motif","right_time": "time", "right_direction": "direction"}, axis=1 ).drop_duplicates().astype(str)
+
     return (
         switch_to_tab,
-        [stored_tf_data['left_tf']],
-        [stored_tf_data['left_direction']],
-        [stored_tf_data['left_time']],
-        stored_tf_data['right_tf'],
-        stored_tf_data['right_direction'],
-        stored_tf_data['right_time'],
+        left_stored_tf_data_df.to_dict('records'),
+        right_stored_tf_data_df.to_dict('records'),
         stored_tf_data['join_type']
     )
 
@@ -1220,116 +1107,6 @@ def update_tf_co_regulation_graph(stored_arules_df, tabCo_lift_threshold, tabCo_
         buttons = display_buttons_on_click(clickData, allq_arules_df)
         stored_tf_data = store_clicked_tf_data(clickData, allq_arules_df)
     return fig, *buttons, stored_tf_data
-
-# Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
-@app.callback(
-    [Output('sankey_diagram', 'figure'),
-     Output('distance_density_plot', 'figure'),
-     Output('go_enrichment_plot', 'figure'),
-     Output('dist_lag_violin_plot', 'figure')],
-    [Input('left_tf_motif_filter', 'value'),
-     Input('left_direction_filter', 'value'),
-     Input('left_time_filter', 'value'),
-     Input('score_threshold', 'value'),
-     Input('right_tf_motif_filter', 'value'),
-     Input('right_direction_filter', 'value'),
-     Input('right_time_filter', 'value'),
-     Input('join_type', 'value'),
-     Input('gene_set_filter', 'value'),
-     Input('background_choice', 'value')]
-)
-def update_tf_graphs(left_tf_motif_filter, left_direction_filter, left_time_filter, score_threshold, right_tf_motif_filter, right_direction_filter, right_time_filter, join_type, gene_set_filter, background_choice):
-    if not left_tf_motif_filter:
-        return go.Figure(), go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
-
-    left_direction_filter = left_direction_filter if left_direction_filter else ["pos", "neg"]
-    left_time_filter = left_time_filter if left_time_filter else [0,1,2,3,4,5,6,7,8,9]
-
-    left_genes = set(data.loc[data['TF_motif'].isin(left_tf_motif_filter) & 
-                             (data['score'].abs() >= score_threshold) & 
-                             (data['direction'].isin(left_direction_filter)) & 
-                             (data['time'].isin(left_time_filter)), 
-                             "gene"].unique().tolist())
-
-    if right_tf_motif_filter:
-        right_direction_filter = right_direction_filter if right_direction_filter else ["pos", "neg"]
-        right_time_filter = right_time_filter if right_time_filter else [0,1,2,3,4,5,6,7,8,9]
-        right_genes = set(data.loc[data['TF_motif'].isin(right_tf_motif_filter) & 
-                                  (data['score'].abs() >= score_threshold) & 
-                                  (data['direction'].isin(right_direction_filter)) & 
-                                  (data['time'].isin(right_time_filter)), 
-                                  "gene"].unique().tolist())
-        gene_join_filter = left_genes.union(right_genes) if join_type == "outer" else left_genes.intersection(right_genes)
-    else:
-        gene_join_filter = left_genes
-
-    filtered_data = data[data['TF_motif'].isin(left_tf_motif_filter) &
-                         data['gene'].isin(gene_join_filter) &
-                          (data['score'].abs() >= score_threshold) &
-                          (data['direction'].isin(left_direction_filter)) &
-                          (data['time'].isin(left_time_filter))]
-    
-    df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
-    df_summary['score'] = df_summary['score'].abs()
-    if right_tf_motif_filter:
-        right_filtered_data = data[data['TF_motif'].isin(right_tf_motif_filter) &
-                                   data['gene'].isin(gene_join_filter) &
-                                    (data['score'].abs() >= score_threshold) &
-                                      data['direction'].isin(right_direction_filter) &
-                                        data['time'].isin(right_time_filter)].assign(TF_motif = lambda x: " " + x["TF_motif"])
-        right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak', 'gene']).agg({'score': 'sum'}).reset_index()
-        right_df_summary['score'] = right_df_summary['score'].abs()
-    else :
-        right_filtered_data = pd.DataFrame(columns=filtered_data.columns)
-        right_df_summary = None
-
-    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette)
-
-    sankey_fig = create_sankey_figure(nodes, links, node_colors)
-    distance_density_fig = create_distance_density_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
-    go_enrichment_fig = create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
-    dist_lag_fig = create_dist_lag_violin_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
-
-    return sankey_fig, distance_density_fig, go_enrichment_fig, dist_lag_fig
-
-# Main callback to update the Sankey diagram and distance density plot for Gene tab
-@app.callback(
-    [Output('tabG_sankey_diagram', 'figure'),
-     Output('tabG_distance_density_plot', 'figure')],
-    [Input('tabG_gene_filter', 'value'),
-     Input('tabG_direction_filter', 'value'),
-     Input('tabG_time_filter', 'value'),
-     Input('tabG_score_threshold', 'value'),
-     Input('tabG_background_choice', 'value')]
-)
-def update_gene_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter, score_threshold, background_choice):
-    if not tabG_gene_filter:
-        return go.Figure(), go.Figure()  # Return empty figures if no gene is selected
-
-    tabG_direction_filter = tabG_direction_filter if tabG_direction_filter else ["pos", "neg"]
-    tabG_time_filter = tabG_time_filter if tabG_time_filter else [0,1,2,3,4,5,6,7,8,9]
-
-    filtered_data = data[data['gene'].isin(tabG_gene_filter) &
-                          (data['score'].abs() >= score_threshold) &
-                          (data['direction'].isin(tabG_direction_filter)) &
-                          (data['time'].isin(tabG_time_filter))]
-
-    df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
-    df_summary['score'] = df_summary['score'].abs()
-
-    filterd_TF_motf = df_summary['TF_motif'].unique().tolist()
-    left_filterd_TF_motf = filterd_TF_motf[:int(len(filterd_TF_motf)/2)]
-    right_filterd_TF_motf = filterd_TF_motf[int(len(filterd_TF_motf)/2):]
-
-    df_summary_left = df_summary[df_summary["TF_motif"].isin(left_filterd_TF_motf)]
-    df_summary_right = df_summary[df_summary["TF_motif"].isin(right_filterd_TF_motf)]
-
-    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary_left, df_summary_right, True, tf_motif_colors, time_colors, background_color, color_palette)
-
-    sankey_fig = create_sankey_figure(nodes, links, node_colors)
-    distance_density_fig = create_distance_density_plot(filtered_data, pd.DataFrame(columns = filtered_data.columns ), background_choice, left_filterd_TF_motf, right_filterd_TF_motf, data)
-
-    return sankey_fig, distance_density_fig
 
 
 def make_arules(data):
@@ -1607,7 +1384,153 @@ def highlight_node_and_edges(fig, clickData, allq_arules_df):
 
 
 
+# Transcription Factor Tab
 
+# Helper function to blend TF_motif color with time greyscale
+def blend_colors(tf_color, time_color, alpha=0.3):
+    tf_rgb = np.array(tf_color[:3] + (0.4,))
+    time_rgb = np.array(time_color[:3] + (0.4,))
+    blended_rgb = (1 - alpha) * tf_rgb + alpha * time_rgb
+    return "rgba" + str(tuple(blended_rgb))
+
+@app.callback(
+    [Output('left_filters_table', 'data', allow_duplicate=True),
+     Output('right_filters_table', 'data', allow_duplicate=True)],
+    [Input('add_left_row', 'n_clicks'),
+     Input('add_right_row', 'n_clicks')],
+    [State('left_filters_table', 'data'),
+     State('right_filters_table', 'data')],
+     prevent_initial_call=True
+)
+def add_table_row(n_clicks_left, n_clicks_right, left_data, right_data):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update, dash.no_update
+
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    if trigger_id == 'add_left_row':
+        left_data.append({'TF_motif': "", 'time': "", 'direction': ""})
+    elif trigger_id == 'add_right_row':
+        right_data.append({'TF_motif': "", 'time': "", 'direction': ""})
+
+    return left_data, right_data
+
+
+@app.callback(
+    [Output('left_filters_table', 'dropdown'),
+     Output('left_filters_table', 'dropdown_conditional'),
+     Output('right_filters_table', 'dropdown'),
+     Output('right_filters_table', 'dropdown_conditional')],
+    [Input('left_filters_table', 'data'),
+     Input('right_filters_table', 'data')]
+)
+def update_dropdown_options(left_data, right_data):
+    def get_dropdowns_and_conditionals(table_data, table_id):
+        dropdown = {
+            'TF_motif': {'options': [{'label': tf, 'value': tf} for tf in data['TF_motif'].unique()]},
+        }
+        dropdown_conditional = []
+        
+        for i, row in enumerate(table_data):
+            tf_motif = row.get('TF_motif', "")
+            if tf_motif:
+                filtered_data = data[data['TF_motif'] == tf_motif]
+                time_options = [{'label': str(t), 'value': str(t)} for t in filtered_data['time'].astype(str).unique()]
+                direction_options = [{'label': d, 'value': d} for d in filtered_data['direction'].unique()]
+                
+                # Use filter_query to target specific rows
+                dropdown_conditional.append({
+                    'if': {
+                        'filter_query': f'{{TF_motif}} = "{tf_motif}"',
+                        'column_id': 'time'
+                    },
+                    'options': time_options
+                })
+                dropdown_conditional.append({
+                    'if': {
+                        'filter_query': f'{{TF_motif}} = "{tf_motif}" && {{time}} = "{row.get("time", "")}"',
+                        'column_id': 'direction'
+                    },
+                    'options': direction_options
+                })
+
+        return dropdown, dropdown_conditional
+
+    left_dropdown, left_conditional = get_dropdowns_and_conditionals(left_data, 'left_filters_table')
+    right_dropdown, right_conditional = get_dropdowns_and_conditionals(right_data, 'right_filters_table')
+
+    return left_dropdown, left_conditional, right_dropdown, right_conditional
+
+
+def filter_by_table_rows(table_data, data, score_threshold):
+    if pd.DataFrame(table_data or {}).replace({"": np.nan}).dropna(how="all").empty:
+        return pd.DataFrame(columns=data.columns), set()
+    filtered_genes = set()
+    filtered_dataframes = []  # To store filtered DataFrames
+
+    for row in table_data:
+        tf_motif = [row['TF_motif']] if row['TF_motif'] else []
+        time = [int(row['time'])] if row['time'] else  [0,1,2,3,4,5,6,7,8,9]
+        direction = [row['direction']] if row['direction'] else ['pos', 'neg']
+
+        filtered = data.copy()
+        if tf_motif:
+            filtered = filtered.loc[(filtered['TF_motif'].isin(tf_motif)) &
+                                (filtered['time'].isin(time)) &
+                                (filtered['direction'].isin(direction)) &
+                                (filtered['score'].abs() >= score_threshold), :]
+        
+        # Update filtered genes and append filtered data
+        filtered_genes.update(filtered['gene'].unique())
+        filtered_dataframes.append(filtered)
+
+    # Combine all filtered dataframes into one
+    combined_filtered_data = pd.concat(filtered_dataframes).drop_duplicates() if filtered_dataframes else pd.DataFrame()
+
+    return combined_filtered_data, filtered_genes
+
+
+# Main callback to update the Sankey diagram, distance density plot, and GO enrichment plot
+@app.callback(
+    [Output('sankey_diagram', 'figure'),
+     Output('distance_density_plot', 'figure'),
+     Output('go_enrichment_plot', 'figure'),
+     Output('dist_lag_violin_plot', 'figure')],
+    [Input('left_filters_table', 'data'),
+     Input('right_filters_table', 'data'),
+     Input('score_threshold', 'value'),
+     Input('join_type', 'value'),
+     Input('gene_set_filter', 'value'),
+     Input('background_choice', 'value')],
+)
+def update_tf_graphs(left_table,  right_table, score_threshold, join_type, gene_set_filter, background_choice):
+    if pd.DataFrame(left_table or {}).replace({"": np.nan},).dropna(how="all").empty:
+        return go.Figure(), go.Figure(), go.Figure(), go.Figure()  # Return empty figures if no left TF_motif is selected
+
+    left_tf_motif_filter = list(pd.DataFrame(left_table)["TF_motif"].unique()) if not pd.DataFrame(left_table or {}).replace({"": np.nan}).dropna(how="all").empty else []
+    right_tf_motif_filter = list(pd.DataFrame(right_table)["TF_motif"].unique()) if not pd.DataFrame(right_table or {}).replace({"": np.nan}).dropna(how="all").empty else []
+
+    # Get filtered data and genes for left and right tables
+    filtered_data, left_genes = filter_by_table_rows(left_table, data, score_threshold)
+    right_filtered_data, right_genes = filter_by_table_rows(right_table, data, score_threshold) # empty if no right filters selected
+    gene_join_filter = left_genes.intersection(right_genes) if (join_type == "inner") & (len(right_genes) > 0) else left_genes.union(right_genes)
+
+    filtered_data = filtered_data[filtered_data["gene"].isin(gene_join_filter)]
+    df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
+    df_summary['score'] = df_summary['score'].abs()
+
+    right_filtered_data = right_filtered_data[right_filtered_data["gene"].isin(gene_join_filter)]
+    right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak', 'gene']).agg({'score': 'sum'}).reset_index()
+    right_df_summary['score'] = right_df_summary['score'].abs()
+
+    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette)
+
+    sankey_fig = create_sankey_figure(nodes, links, node_colors)
+    distance_density_fig = create_distance_density_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+    go_enrichment_fig = create_go_enrichment_plot(gene_set_filter, gene_join_filter, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+    dist_lag_fig = create_dist_lag_violin_plot(filtered_data, right_filtered_data, background_choice, left_tf_motif_filter, right_tf_motif_filter, data)
+
+    return sankey_fig, distance_density_fig, go_enrichment_fig, dist_lag_fig
 
 
 def generate_sankey_nodes_and_links(df_summary, right_df_summary, right_tf_motif_filter, tf_motif_colors, time_colors, background_color, color_palette):
@@ -1959,6 +1882,103 @@ def create_dist_lag_violin_plot(filtered_data, right_filtered_data, background_c
     else:
         fig_dist_lag = go.Figure()
     return fig_dist_lag
+
+# Gene Tab
+
+# Callback to update the Gene filter in the Gene tab based on clicks on the Sankey diagram
+@app.callback(
+    Output('tabG_gene_filter', 'value'),
+    [Input('sankey_diagram', 'clickData')],
+    [State('tabG_gene_filter', 'value')]
+)
+def update_gene_filter_from_sankey(clickData, current_genes):
+    if clickData is None:
+        return current_genes
+
+    clicked_node = clickData['points'][0]['label']
+    if ' ' in clicked_node:  # This condition may need to be adapted based on your node labels
+        return current_genes  # Not a gene node, return current filter without changes
+
+    # If clicked_node is a gene, update the gene filter
+    if current_genes is None:
+        current_genes = []
+
+    if clicked_node not in current_genes:
+        current_genes.append(clicked_node)
+
+    return current_genes
+
+# Callbacks to update Gene filters based on selected TF_motifs and directions
+
+@app.callback(
+    [Output('tabG_direction_filter', 'options'),
+     Output('tabG_direction_filter', 'value'),
+     Output('tabG_direction_filter', 'disabled')],
+    [Input('tabG_gene_filter', 'value')]
+)
+def update_tabG_direction_filter(selected_genes):
+    if not selected_genes:
+        return [], ['pos', 'neg'], True
+
+    filtered_data = data[data['gene'].isin(selected_genes)]
+    directions = [{'label': dir, 'value': dir} for dir in filtered_data['direction'].unique()]
+
+    return directions, ['pos', 'neg'], False
+
+@app.callback(
+    [Output('tabG_time_filter', 'options'),
+     Output('tabG_time_filter', 'disabled')],
+    [Input('tabG_gene_filter', 'value'),
+     Input('tabG_direction_filter', 'value')]
+)
+def update_tabG_time_filter(selected_genes, selected_directions):
+    if not selected_genes or not selected_directions:
+        return [], True
+
+    filtered_data = data[(data['gene'].isin(selected_genes)) & (data['direction'].isin(selected_directions))]
+    times = [{'label': time, 'value': time} for time in filtered_data['time'].unique()]
+
+    return times, False
+
+
+# Main callback to update the Sankey diagram and distance density plot for Gene tab
+@app.callback(
+    [Output('tabG_sankey_diagram', 'figure'),
+     Output('tabG_distance_density_plot', 'figure')],
+    [Input('tabG_gene_filter', 'value'),
+     Input('tabG_direction_filter', 'value'),
+     Input('tabG_time_filter', 'value'),
+     Input('tabG_score_threshold', 'value'),
+     Input('tabG_background_choice', 'value')]
+)
+def update_gene_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter, score_threshold, background_choice):
+    if not tabG_gene_filter:
+        return go.Figure(), go.Figure()  # Return empty figures if no gene is selected
+
+    tabG_direction_filter = tabG_direction_filter if tabG_direction_filter else ["pos", "neg"]
+    tabG_time_filter = tabG_time_filter if tabG_time_filter else [0,1,2,3,4,5,6,7,8,9]
+
+    filtered_data = data[data['gene'].isin(tabG_gene_filter) &
+                          (data['score'].abs() >= score_threshold) &
+                          (data['direction'].isin(tabG_direction_filter)) &
+                          (data['time'].isin(tabG_time_filter))]
+
+    df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
+    df_summary['score'] = df_summary['score'].abs()
+
+    filterd_TF_motf = df_summary['TF_motif'].unique().tolist()
+    left_filterd_TF_motf = filterd_TF_motf[:int(len(filterd_TF_motf)/2)]
+    right_filterd_TF_motf = filterd_TF_motf[int(len(filterd_TF_motf)/2):]
+
+    df_summary_left = df_summary[df_summary["TF_motif"].isin(left_filterd_TF_motf)]
+    df_summary_right = df_summary[df_summary["TF_motif"].isin(right_filterd_TF_motf)]
+
+    nodes, node_indices, links, node_colors = generate_sankey_nodes_and_links(df_summary_left, df_summary_right, True, tf_motif_colors, time_colors, background_color, color_palette)
+
+    sankey_fig = create_sankey_figure(nodes, links, node_colors)
+    distance_density_fig = create_distance_density_plot(filtered_data, pd.DataFrame(columns = filtered_data.columns ), background_choice, left_filterd_TF_motf, right_filterd_TF_motf, data)
+
+    return sankey_fig, distance_density_fig
 
 # Run the app
 if __name__ == '__main__':
