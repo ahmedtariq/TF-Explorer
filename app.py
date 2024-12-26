@@ -253,7 +253,7 @@ app.layout = html.Div([
                             page_size=10,
                             tooltip_header={
                                 col: {
-                                    'value': filter_data[col].describe().round(2).to_string()
+                                    'value': filter_data[col].describe().round(2).to_markdown(), 'type': 'markdown'
                                 }
                                 for col in filter_data.columns
                             },  # Add tooltips for headers
@@ -707,14 +707,14 @@ def apply_advanced_filter(query, selected):
 def update_tooltips(filtered_data):
     # Handle the case where no data is displayed
     if not filtered_data:
-        return {col: {'value': 'No data available'} for col in filter_data.columns}
+        return {col: {'value': 'No data available', 'type': 'markdown'} for col in filter_data.columns}
 
     # Convert filtered data to a DataFrame
     filtered_df = pd.DataFrame(filtered_data)
 
     # Recalculate statistics for the filtered data
     tooltip_header = {
-        col: {'value': filtered_df[col].describe().round(2).to_string()}
+        col: {'value': filtered_df[col].describe().round(2).to_markdown(), 'type': 'markdown'}
         for col in filtered_df.columns
     }
     return tooltip_header
@@ -1054,8 +1054,8 @@ def update_tf_tab_selectors(n_clicks, stored_tf_data):
     left_stored_tf_data_df = pd.DataFrame({k: v for k, v in stored_tf_data.items() if "left" in k})
     right_stored_tf_data_df = pd.DataFrame({k: v for k, v in stored_tf_data.items() if "right" in k})
 
-    left_stored_tf_data_df = left_stored_tf_data_df.loc[:,['left_tf',"left_time", "left_direction"]].rename({'left_tf': "TF_motif","left_time": "time", "left_direction": "direction"} ,axis=1).drop_duplicates().astype(str)
-    right_stored_tf_data_df = right_stored_tf_data_df.loc[:,['right_tf',"right_time", "right_direction"]].rename({'right_tf': "TF_motif","right_time": "time", "right_direction": "direction"}, axis=1 ).drop_duplicates().astype(str)
+    left_stored_tf_data_df = left_stored_tf_data_df.loc[:,['left_tf',"left_time", "left_direction"]].rename({'left_tf': "TF_motif","left_time": "time", "left_direction": "direction"} ,axis=1).drop_duplicates().sort_values(by=["time", "direction"]).astype(str)
+    right_stored_tf_data_df = right_stored_tf_data_df.loc[:,['right_tf',"right_time", "right_direction"]].rename({'right_tf': "TF_motif","right_time": "time", "right_direction": "direction"}, axis=1 ).drop_duplicates().sort_values(by=["time", "direction"]).astype(str)
 
     return (
         switch_to_tab,
@@ -1544,7 +1544,7 @@ def update_tf_graphs(left_table,  right_table, score_threshold, join_type, gene_
     df_summary = filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak' ,'gene']).agg({'score': 'sum'}).reset_index()
     df_summary['score'] = df_summary['score'].abs()
 
-    right_filtered_data = right_filtered_data[right_filtered_data["gene"].isin(gene_join_filter)]
+    right_filtered_data = right_filtered_data[right_filtered_data["gene"].isin(gene_join_filter)].assign(TF_motif = lambda x: " " + x["TF_motif"])
     right_df_summary = right_filtered_data.groupby(['TF_motif', 'direction', 'time', 'peak', 'gene']).agg({'score': 'sum'}).reset_index()
     right_df_summary['score'] = right_df_summary['score'].abs()
 
