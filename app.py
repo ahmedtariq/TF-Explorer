@@ -439,7 +439,7 @@ app.layout = html.Div([
                     html.Label("Select Time:"),
                     dcc.Dropdown(
                         id='tabCo_time_filter',
-                        options=[{'label': str(i), 'value': i} for i in range(0, 10)],
+                        options=[{'label': str(i), 'value': i} for i in list(data["time"].unique())],
                         multi=True
                     ),
                     html.Label("Select Direction:"),
@@ -1106,7 +1106,7 @@ def update_tf_co_regulation_graph(stored_arules_df, tabCo_lift_threshold, tabCo_
         graph_data = pd.DataFrame(filtered_data) if filtered_data else data
 
         tabCo_direction_filter = tabCo_direction_filter if tabCo_direction_filter else ["pos", "neg"]
-        tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else [0,1,2,3,4,5,6,7,8,9]
+        tabCo_time_filter = tabCo_time_filter if tabCo_time_filter else list(data["time"].unique())
         # Convert the stored data back to a DataFrame and filter it
         allq_arules_df = pd.DataFrame(stored_arules_df)
         allq_arules_df = allq_arules_df[
@@ -1495,7 +1495,7 @@ def filter_by_table_rows(table_data, data, score_threshold):
 
     for row in table_data:
         tf_motif = [row['TF_motif']] if row['TF_motif'] else []
-        time = [int(row['time'])] if row['time'] else  [0,1,2,3,4,5,6,7,8,9]
+        time = [int(row['time'])] if row['time'] else  list(data["time"].unique())
         direction = [row['direction']] if row['direction'] else ['pos', 'neg']
 
         filtered = data.copy()
@@ -1981,7 +1981,7 @@ def update_gene_graphs(tabG_gene_filter, tabG_direction_filter, tabG_time_filter
         return go.Figure(), go.Figure()  # Return empty figures if no gene is selected
 
     tabG_direction_filter = tabG_direction_filter if tabG_direction_filter else ["pos", "neg"]
-    tabG_time_filter = tabG_time_filter if tabG_time_filter else [0,1,2,3,4,5,6,7,8,9]
+    tabG_time_filter = tabG_time_filter if tabG_time_filter else list(data["time"].unique())
 
     filtered_data = data[data['gene'].isin(tabG_gene_filter) &
                           (data['score'].abs() >= score_threshold) &
